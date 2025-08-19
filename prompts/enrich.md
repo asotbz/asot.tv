@@ -12,7 +12,7 @@ Using the provided IMDb list export, produce a csv with the following fields for
 - youtube_channel: the name of the source channel or uploader which matches the youtube_url.
 
 Use the field names exactly as written above. Fetch all data using IMDb's API and other sources as required.
-Produce the first 10 fully enriched rows in chat for review.
+Produce the first 20 fully enriched rows in chat for review, then continue processing 20 rows at a time.
 The final deliverable is a complete enriched dataset, as a downloadable .csv file, containing all 100 entries.
 
 Prioritize accuracy. Begin processing now and deliver the report when ready.
