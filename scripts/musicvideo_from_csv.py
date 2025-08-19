@@ -380,19 +380,28 @@ def extract_row_values(
     return title, album, artists, label, year, youtube, directors, genres, youtube_channel, tags
 
 
-def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: bool) -> Tuple[int, int, int]:
+def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: bool) -> Tuple[int, int, int, List[Dict[str, str]], List[str]]:
     """
-    Process all rows. Returns tuple: (success_count, skip_count, fail_count)
+    Process all rows.
+    Returns:
+      - success_count
+      - skip_count
+      - fail_count
+      - failed_download_rows: list of original CSV row dicts that failed during the download step
+      - fieldnames: original CSV header order
     """
     success = 0
     skipped = 0
     failed = 0
+    failed_download_rows: List[Dict[str, str]] = []
+    all_fieldnames: List[str] = []
 
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             print("CSV has no header row.", file=sys.stderr)
-            return (0, 0, 1)
+            return (0, 0, 1, [], [])
+        all_fieldnames = reader.fieldnames
 
         hmap = normalize_header_map(reader.fieldnames)
         required = ["year", "title", "artist", "album", "label", "youtube"]
@@ -405,7 +414,7 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
             for r in missing:
                 aliases = ", ".join(sorted(CANON_ALIASES[r]))
                 print(f"  - {r}: {aliases}", file=sys.stderr)
-            return (0, 0, 1)
+            return (0, 0, 1, [], all_fieldnames)
 
         for idx, row in enumerate(reader, start=2):
             try:
@@ -455,6 +464,7 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                 if mp4 is None or not mp4.exists():
                     print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
                     failed += 1
+                    failed_download_rows.append(row.copy())
                     continue
 
                 # NFO
@@ -475,7 +485,7 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                 print(f"[Row {idx}] Error: {e}", file=sys.stderr)
                 failed += 1
 
-    return success, skipped, failed
+    return success, skipped, failed, failed_download_rows, all_fieldnames
 
 
 def main() -> None:
@@ -495,12 +505,18 @@ def main() -> None:
     print(f"Overwrite: {'yes' if args.overwrite else 'no'}")
     print(f"Recode fallback: {'yes' if args.recode_fallback else 'no'}")
 
-    ok, skipped, bad = process_csv(csv_path, outdir, args.overwrite, args.recode_fallback)
+    ok, skipped, bad, failed_rows, fieldnames = process_csv(csv_path, outdir, args.overwrite, args.recode_fallback)
 
     print("\nSummary")
     print(f"  Success: {ok}")
     print(f"  Skipped: {skipped}")
     print(f"  Failed:  {bad}")
+
+    if failed_rows:
+        print("\nFailed download rows (CSV):")
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(failed_rows)
 
     sys.exit(0 if bad == 0 else 1)
 
