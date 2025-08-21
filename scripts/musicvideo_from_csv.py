@@ -266,7 +266,9 @@ def write_kodi_nfo(
     add_text("title", title or "")
     add_text("album", album or "")
     add_text("studio", label or "")
-    add_text("year", str(year or ""))
+    # Write <premiered> instead of <year>, format as YYYY-01-01
+    premiered_val = f"{year}-01-01" if year else ""
+    add_text("premiered", premiered_val)
 
     for d in (directors or []):
         if d and d.strip():
