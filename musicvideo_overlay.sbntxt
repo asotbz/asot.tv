@@ -1,0 +1,77 @@
+[Script Info]
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: None
+PlayResX: {{ resolution.width }}
+PlayResY: {{ resolution.height }}
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,    Neue Kabel Black,    {{ resolution.height // 10.0 }},&HDDDDDD,&HDDDDDD,&H444444,&H00000000,0,0,0,0,100,100,0,0,1,1,3,0,10,10,10,1
+Style: Artist,   Neue Kabel, {{ resolution.height // 20.0 }},&HFFFFFF,&HFFFFFF,&H444444,&H00000000,1,0,0,0,100,100,0,0,1,1,3,0,10,10,10,1
+Style: Album,  Neue Kabel Book, {{ resolution.height // 20.0 }},&HDDDDDD,&HDDDDDD,&H444444,&H00000000,0,0,0,0,100,100,0,0,1,1,3,0,10,10,40,1
+Style: Studio,   Courier Prime, {{ resolution.height // 35.0 }},&HA0A0A0,&HA0A0A0,&H444444,&H00000000,0,0,0,0,100,100,1,0,1,1,3,0,10,10,10,1
+Style: Director, Courier Prime, {{ resolution.height // 35.0 }},&HDDDDDD,&HDDDDDD,&H444444,&H00000000,0,0,0,0,100,100,1,0,1,1,3,0,10,10,10,1
+
+[Events]
+{{~ _margin3_p = resolution.width * 0.03 | math.round ~}}
+{{~ _margin05_p = resolution.height * 0.05 | math.round ~}}
+{{~ _margin08_p = resolution.height * 0.08 | math.round ~}}
+{{~ _margin12_p = resolution.height * 0.12 | math.round ~}}
+{{~ _margin20_p = resolution.width * 0.2 | math.round ~}}
+{{~ _seek_s = stream_seek.total_seconds | math.round ~}}
+{{~ _duration_s = duration.total_seconds | math.round ~}}
+{{~ _min_interval_s = 60 ~}}
+{{~ if (_duration_s | math.minus _seek_s) > _min_interval_s ~}}
+{{~ _first_start_ts = timespan.from_seconds (_seek_s | math.plus 7) ~}}
+{{~ _first_end_ts = timespan.from_seconds (_seek_s | math.plus 17) ~}}
+{{~ end ~}}
+{{~ _last_start_ts = timespan.from_seconds (_duration_s | math.minus 15) ~}}
+{{~ _last_end_ts = timespan.from_seconds (_duration_s | math.minus 5) ~}}
+{{~ if all_artists ~}}
+{{~ capture _artists_t ~}}{{~ all_artists | array.uniq | array.join " | " ~}}{{~ end ~}}
+{{~ end ~}}
+
+{{~ if release_date ~}}
+{{~ capture _release_t ~}}{{~ release_date.year ~}}{{~ end ~}}
+{{~ _release_t = " (" + _release_t + ")" ~}}
+{{~ end ~}}
+
+{{~ if studios ~}}
+{{~ capture _studio_t ~}}{{~ studios | array.uniq | array.join " | " ~}}{{~ end ~}}
+{{~ end ~}}
+
+{{~ if directors ~}}
+{{~ capture _director_t ~}}{{~ directors | array.uniq | array.join " | " ~}}{{~ end ~}}
+{{~ end ~}}
+{{~ if _director_t != "" ~}}
+{{~ capture _director_t ~}}{{~ _director_t ~}}{{~ end ~}}
+{{~ _director_t = "Director: " + _director_t ~}}
+{{~ end ~}}
+
+
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+{{~ if _director_t != "" ~}}
+Dialogue: 0,{{ _first_start_ts }}.00,{{ _first_end_ts }}.00,Director,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _director_t }}
+{{~ end ~}}
+{{~ if _studio_t != "" ~}}
+Dialogue: 0,{{ _first_start_ts }}.00,{{ _first_end_ts }}.00,Studio,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _studio_t }}
+{{~ end ~}}
+{{~ if album != "" ~}}
+Dialogue: 0,{{ _first_start_ts }}.00,{{ _first_end_ts }}.00,Album,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin12_p }},,{\fad(1200, 1800)}{{ album }}{{ _release_t }}
+{{~ end ~}}
+Dialogue: 0,{{ _first_start_ts }}.00,{{ _first_end_ts }}.00,Title,,{{ _margin3_p }},{{ _margin20_p }},{{ _margin05_p }},,{\fad(1800, 1200)}{{ title }}
+Dialogue: 0,{{ _first_start_ts }}.00,{{ _first_end_ts }}.00,Artist,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _artists_t }}
+
+{{~ if _director_t != "" ~}}
+Dialogue: 0,{{ _last_start_ts }}.00,{{ _last_end_ts }}.00,Director,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _director_t }}
+{{~ end ~}}
+{{~ if _studio_t != "" ~}}
+Dialogue: 0,{{ _last_start_ts }}.00,{{ _last_end_ts }}.00,Studio,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _studio_t }}
+{{~ end ~}}
+{{~ if album != "" ~}}
+Dialogue: 0,{{ _last_start_ts }}.00,{{ _last_end_ts }}.00,Album,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin12_p }},,{\fad(1200, 1800)}{{ album }}{{ _release_t }}
+{{~ end ~}}
+Dialogue: 0,{{ _last_start_ts }}.00,{{ _last_end_ts }}.00,Title,,{{ _margin3_p }},{{ _margin20_p }},{{ _margin05_p }},,{\fad(1800, 1200)}{{ title }}
+Dialogue: 0,{{ _last_start_ts }}.00,{{ _last_end_ts }}.00,Artist,,{{ _margin3_p }},{{ _margin3_p }},{{ _margin08_p }},,{\fad(1200, 1800)}{{ _artists_t }}
