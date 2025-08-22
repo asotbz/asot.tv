@@ -89,6 +89,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="If remux to MP4 fails, recode to MP4 as fallback",
     )
+    p.add_argument(
+        "--no-search",
+        action="store_true",
+        help="Disable automatic video source searching on download failure",
+    )
     return p.parse_args()
 
 
@@ -413,14 +418,20 @@ def extract_row_values(
     return title, album, artists, label, year, youtube, directors, genres, youtube_channel, tags
 
 
-def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: bool) -> Tuple[int, int, int, List[Dict[str, str]], List[str]]:
+def process_csv(
+    csv_path: Path,
+    outdir: Path,
+    overwrite: bool,
+    recode_fallback: bool,
+    no_search: bool = False,
+) -> Tuple[int, int, int, List[Dict[str, str]], List[str]]:
     """
-    Process all rows.
+    Refactored download logic per requirements.
     Returns:
       - success_count
       - skip_count
       - fail_count
-      - failed_download_rows: list of original CSV row dicts that failed during the download step
+      - failed_download_rows: list of dicts with extra fields
       - fieldnames: original CSV header order
     """
     success = 0
@@ -429,6 +440,7 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
     failed_download_rows: List[Dict[str, str]] = []
     all_fieldnames: List[str] = []
 
+    url_re = re.compile(r"^https?://[^\s]+$")
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -452,36 +464,38 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
         for idx, row in enumerate(reader, start=2):
             try:
                 title, album, artists, label, year, youtube, directors, genres, youtube_channel, tags = extract_row_values(row, hmap)
-
-                # Basic validation
-                if not youtube:
-                    print(f"[Row {idx}] Missing YouTube URL; skipping.", file=sys.stderr)
-                    failed += 1
-                    continue
-                if not title:
-                    print(f"[Row {idx}] Missing Title; skipping.", file=sys.stderr)
-                    failed += 1
-                    continue
-                if not album:
-                    print(f"[Row {idx}] Missing Album; skipping.", file=sys.stderr)
-                    failed += 1
-                    continue
                 main_artist = artists[0] if artists else "Unknown Artist"
 
                 # Build output paths
                 artist_dir = sanitize_component(main_artist)
                 album_dir = sanitize_component(album)
                 title_stem = sanitize_component(title)
-
                 target_dir = outdir / artist_dir / album_dir
                 ensure_dir(target_dir)
-
                 out_no_ext = target_dir / title_stem
                 final_mp4 = out_no_ext.with_suffix(".mp4")
                 nfo_path = out_no_ext.with_suffix(".nfo")
 
-                # Decide whether to force re-download based on .nfo current source
-                existing_mp4 = final_mp4.exists()
+                # Check for invalid URL
+                exists = final_mp4.exists()
+                search_attempt = False
+                fail_row = row.copy()
+                fail_row["exists"] = str(exists).lower()
+                fail_row["search_attempt"] = "false"
+
+                if not youtube or not url_re.match(youtube):
+                    print(f"[Row {idx}] Invalid YouTube URL; skipping download/search.", file=sys.stderr)
+                    failed += 1
+                    # Only output title and artist, rest empty, youtube_url="invalid_url"
+                    fail_row = {k: "" for k in all_fieldnames}
+                    fail_row["title"] = title
+                    fail_row["artist"] = main_artist
+                    fail_row["youtube"] = "invalid_url"
+                    fail_row["exists"] = str(exists).lower()
+                    fail_row["search_attempt"] = "false"
+                    failed_download_rows.append(fail_row)
+                    continue
+
                 # Gather all prior source URLs from NFO
                 prior_urls = set()
                 current_source = None
@@ -500,67 +514,119 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                     except Exception:
                         prior_urls = set()
                         current_source = None
-                # If the CSV download location is already present, skip download
-                if youtube in prior_urls:
-                    print(f"[Row {idx}] Source already present in NFO, skipping download: {youtube}", file=sys.stderr)
-                    skipped += 1
-                    continue
 
-                force_redownload = bool(existing_mp4 and current_source and current_source != youtube)
+                # If video exists locally, check NFO for matching source
+                if exists:
+                    if youtube in prior_urls:
+                        print(f"[Row {idx}] Video exists and source matches; skipping download: {youtube}", file=sys.stderr)
+                        skipped += 1
+                        continue
+                    else:
+                        # Attempt download, but do NOT search if it fails
+                        mp4 = yt_dlp_download(
+                            youtube,
+                            out_no_ext,
+                            overwrite=overwrite,
+                            recode_fallback=recode_fallback,
+                        )
+                        if mp4 is None or not mp4.exists():
+                            print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
+                            failed += 1
+                            fail_row["search_attempt"] = "false"
+                            failed_download_rows.append(fail_row)
+                            continue
+                        # Write NFO as usual
+                        write_kodi_nfo(nfo_path, title, album, label, year, artists, directors, genres, youtube, youtube_channel, tags)
+                        success += 1
+                        print(f"Done: {final_mp4}")
+                        continue
 
-                # Download (force overwrite if source changed)
-                effective_overwrite = overwrite or force_redownload
+                # If video does not exist locally, attempt download
                 mp4 = yt_dlp_download(
                     youtube,
                     out_no_ext,
-                    overwrite=effective_overwrite,
+                    overwrite=overwrite,
                     recode_fallback=recode_fallback,
                 )
-
                 if mp4 is None or not mp4.exists():
                     print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
-                    # Try yt-dlp search for official music video
-                    search_result = yt_dlp_search_url(title, main_artist)
-                    if search_result:
-                        search_url, search_vid_id = search_result
-                        if search_url != youtube:
-                            print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
-                            mp4 = yt_dlp_download(
-                                search_url,
-                                out_no_ext,
-                                overwrite=effective_overwrite,
-                                recode_fallback=recode_fallback,
-                            )
-                            if mp4 is not None and mp4.exists():
-                                # Construct canonical YouTube URL for NFO
-                                youtube = f"https://www.youtube.com/watch?v={search_vid_id}"
+                    # Only search if allowed
+                    if not no_search:
+                        search_result = yt_dlp_search_url(title, main_artist)
+                        if search_result:
+                            search_url, search_vid_id = search_result
+                            if search_url != youtube:
+                                print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
+                                search_attempt = True
+                                fail_row["search_attempt"] = "true"
+                                mp4 = yt_dlp_download(
+                                    search_url,
+                                    out_no_ext,
+                                    overwrite=overwrite,
+                                    recode_fallback=recode_fallback,
+                                )
+                                if mp4 is not None and mp4.exists():
+                                    # Write NFO with original URL, failed=true, and add search source with search=true
+                                    try:
+                                        # Write NFO with extra attributes
+                                        root = ET.Element("musicvideo")
+                                        def add_text(tag: str, text: str) -> None:
+                                            el = ET.SubElement(root, tag)
+                                            el.text = text or ""
+                                        add_text("title", title or "")
+                                        add_text("album", album or "")
+                                        add_text("studio", label or "")
+                                        premiered_val = f"{year}-01-01" if year else ""
+                                        add_text("premiered", premiered_val)
+                                        for d in (directors or []):
+                                            if d and d.strip():
+                                                add_text("director", d.strip())
+                                        for g in (genres or []):
+                                            if g and g.strip():
+                                                add_text("genre", g.strip())
+                                        for a in (artists or []):
+                                            if a and a.strip():
+                                                add_text("artist", a.strip())
+                                        if tags:
+                                            add_text("tag", ", ".join([t for t in tags if t.strip()]))
+                                        # Source block
+                                        source_el = ET.SubElement(root, "source")
+                                        # Original URL with failed=true
+                                        attrs_fail = {"index": "0", "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "failed": "true"}
+                                        cur_el = ET.SubElement(source_el, "url", attrs_fail)
+                                        cur_el.text = youtube
+                                        # Search source with search=true
+                                        attrs_search = {"index": "1", "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "search": "true"}
+                                        cur_search = ET.SubElement(source_el, "url", attrs_search)
+                                        cur_search.text = f"https://www.youtube.com/watch?v={search_vid_id}"
+                                        tree = ET.ElementTree(root)
+                                        tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
+                                    except Exception as e:
+                                        print(f"[Row {idx}] Error writing NFO with search attributes: {e}", file=sys.stderr)
+                                    success += 1
+                                    print(f"Done (search): {final_mp4}")
+                                    continue
+                                else:
+                                    print(f"[Row {idx}] Search-based download also failed.", file=sys.stderr)
+                                    failed += 1
+                                    failed_download_rows.append(fail_row)
+                                    continue
                             else:
-                                print(f"[Row {idx}] Search-based download also failed.", file=sys.stderr)
                                 failed += 1
-                                failed_download_rows.append(row.copy())
+                                failed_download_rows.append(fail_row)
                                 continue
                         else:
                             failed += 1
-                            failed_download_rows.append(row.copy())
+                            failed_download_rows.append(fail_row)
                             continue
                     else:
+                        # No search allowed
                         failed += 1
-                        failed_download_rows.append(row.copy())
+                        failed_download_rows.append(fail_row)
                         continue
-
-                # NFO
+                # Download succeeded
                 write_kodi_nfo(nfo_path, title, album, label, year, artists, directors, genres, youtube, youtube_channel, tags)
-
-                if mp4.exists() and not overwrite:
-                    # Could be a real skip if existing; count skip if it existed prior and no download was done
-                    # Heuristic: if file existed beforehand, yt-dlp would have skipped; we already printed "Skip (exists)"
-                    if "Skip (exists)" in "" :  # no reliable signal; treat as success
-                        skipped += 1
-                    else:
-                        success += 1
-                else:
-                    success += 1
-
+                success += 1
                 print(f"Done: {final_mp4}")
             except Exception as e:
                 print(f"[Row {idx}] Error: {e}", file=sys.stderr)
@@ -585,8 +651,15 @@ def main() -> None:
     print(f"Output dir: {outdir}")
     print(f"Overwrite: {'yes' if args.overwrite else 'no'}")
     print(f"Recode fallback: {'yes' if args.recode_fallback else 'no'}")
+    print(f"No search: {'yes' if args.no_search else 'no'}")
 
-    ok, skipped, bad, failed_rows, fieldnames = process_csv(csv_path, outdir, args.overwrite, args.recode_fallback)
+    ok, skipped, bad, failed_rows, fieldnames = process_csv(
+        csv_path,
+        outdir,
+        args.overwrite,
+        args.recode_fallback,
+        no_search=getattr(args, "no_search", False),
+    )
 
     print("\nSummary")
     print(f"  Success: {ok}")
@@ -595,7 +668,10 @@ def main() -> None:
 
     if failed_rows:
         print("\nFailed download rows (CSV):")
-        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        # Add extra fields to output
+        extra_fields = ["exists", "search_attempt"]
+        out_fields = fieldnames + [f for f in extra_fields if f not in fieldnames]
+        writer = csv.DictWriter(sys.stdout, fieldnames=out_fields)
         writer.writeheader()
         writer.writerows(failed_rows)
 
