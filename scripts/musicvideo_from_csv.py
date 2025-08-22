@@ -236,22 +236,26 @@ def yt_dlp_download(
     print("Download failed or no MP4 produced.", file=sys.stderr)
     return None
 
-def yt_dlp_search_url(title: str, artist: str) -> Optional[str]:
+def yt_dlp_search_url(title: str, artist: str) -> Optional[Tuple[str, str]]:
     """
-    Search YouTube for 'title artist official music video' and return first video URL.
+    Search YouTube for 'title artist official music video' and return (video URL, video ID).
     """
     query = f"{title} {artist} official music video"
     args = [
         "yt-dlp",
         f"ytsearch1:{query}",
-        "--get-url"
+        "--get-url",
+        "--get-id"
     ]
     try:
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode == 0:
-            url = result.stdout.strip().splitlines()[0]
-            if url.startswith("http"):
-                return url
+            lines = result.stdout.strip().splitlines()
+            if len(lines) >= 2:
+                url = lines[0]
+                vid_id = lines[1]
+                if url.startswith("http") and vid_id:
+                    return url, vid_id
     except Exception as e:
         print(f"yt_dlp_search_url error: {e}", file=sys.stderr)
     return None
@@ -478,7 +482,26 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
 
                 # Decide whether to force re-download based on .nfo current source
                 existing_mp4 = final_mp4.exists()
-                current_source = read_current_source(nfo_path) if nfo_path.exists() else None
+                # Gather all prior source URLs from NFO
+                prior_urls = set()
+                if nfo_path.exists():
+                    try:
+                        old_tree = ET.parse(nfo_path)
+                        old_root = old_tree.getroot()
+                        old_source = old_root.find("source")
+                        if old_source is not None:
+                            for child in list(old_source):
+                                url_text = (child.text or "").strip()
+                                if url_text:
+                                    prior_urls.add(url_text)
+                    except Exception:
+                        prior_urls = set()
+                # If the CSV download location is already present, skip download
+                if youtube in prior_urls:
+                    print(f"[Row {idx}] Source already present in NFO, skipping download: {youtube}", file=sys.stderr)
+                    skipped += 1
+                    continue
+
                 force_redownload = bool(existing_mp4 and current_source and current_source != youtube)
 
                 # Download (force overwrite if source changed)
@@ -493,20 +516,26 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                 if mp4 is None or not mp4.exists():
                     print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
                     # Try yt-dlp search for official music video
-                    search_url = yt_dlp_search_url(title, main_artist)
-                    if search_url and search_url != youtube:
-                        print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
-                        mp4 = yt_dlp_download(
-                            search_url,
-                            out_no_ext,
-                            overwrite=effective_overwrite,
-                            recode_fallback=recode_fallback,
-                        )
-                        if mp4 is not None and mp4.exists():
-                            # Update youtube variable for NFO
-                            youtube = search_url
+                    search_result = yt_dlp_search_url(title, main_artist)
+                    if search_result:
+                        search_url, search_vid_id = search_result
+                        if search_url != youtube:
+                            print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
+                            mp4 = yt_dlp_download(
+                                search_url,
+                                out_no_ext,
+                                overwrite=effective_overwrite,
+                                recode_fallback=recode_fallback,
+                            )
+                            if mp4 is not None and mp4.exists():
+                                # Construct canonical YouTube URL for NFO
+                                youtube = f"https://www.youtube.com/watch?v={search_vid_id}"
+                            else:
+                                print(f"[Row {idx}] Search-based download also failed.", file=sys.stderr)
+                                failed += 1
+                                failed_download_rows.append(row.copy())
+                                continue
                         else:
-                            print(f"[Row {idx}] Search-based download also failed.", file=sys.stderr)
                             failed += 1
                             failed_download_rows.append(row.copy())
                             continue
