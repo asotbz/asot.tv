@@ -444,6 +444,7 @@ def process_row(
     if mp4 is None or not mp4.exists():
         print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
         if not no_search:
+            print(f"[Row {idx}] Attempting search for alternative video...", file=sys.stderr)
             search_result = yt_dlp_search_url(title, main_artist)
             if search_result:
                 search_url, search_vid_id = search_result
