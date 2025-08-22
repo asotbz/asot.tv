@@ -313,10 +313,12 @@ def write_kodi_nfo(
         cur_el = ET.SubElement(sources_el, "url", attrs)
         cur_el.text = youtube_url
 
-    tree = ET.ElementTree(ET.Element("root"))
-    tree.getroot().append(root)
-    tree.getroot().append(sources_el)
-    tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
+    top_level = ET.ElementTree()
+    elements = [root, sources_el]
+    with nfo_path.open("wb") as f:
+        f.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+        for el in elements:
+            f.write(ET.tostring(el, encoding="utf-8"))
 
 def extract_row_values(
     row: Dict[str, str],
@@ -496,14 +498,17 @@ def process_row(
                         failed_download_rows.append(fail_row)
                         return success, skipped, failed
                 else:
+                    print(f"[Row {idx}] Search returned same URL; not retrying.", file=sys.stderr)
                     failed += 1
                     failed_download_rows.append(fail_row)
                     return success, skipped, failed
             else:
+                print(f"[Row {idx}] No search results found.", file=sys.stderr)
                 failed += 1
                 failed_download_rows.append(fail_row)
                 return success, skipped, failed
         else:
+            print(f"[Row {idx}] No-search flag set; not attempting search.", file=sys.stderr)
             failed += 1
             failed_download_rows.append(fail_row)
             return success, skipped, failed
