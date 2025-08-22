@@ -8,7 +8,7 @@ Using the provided IMDb list export, produce a csv with the following fields for
 - genre: primary genre of the track, normalized to broad genres such as Hip Hop/R&B, Rock, Pop, Metal, or Country.
 - director: if available from the IMDb list. If this is not available, leave the field empty.
 - tag: If the release year of the video was 1990-1999, use "90s", if 1980-1989, "80s", 2000-2009, "00s".
-- youtube_url: a YouTube URL for the video. Channel/uploader preference order: artist or label, then an official source such as VEVO, then any uploader. Provide plain text URLs.
+- youtube_url: a YouTube URL for the video. Preference is the top video returned by searching title, artist, and the words "official music video". Provide plain text URLs.
 - youtube_channel: the name of the source channel or uploader which matches the youtube_url.
 
 Use the field names exactly as written above. Fetch all data using IMDb's API and other sources as required.
