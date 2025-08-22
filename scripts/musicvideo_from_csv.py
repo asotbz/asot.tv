@@ -236,6 +236,26 @@ def yt_dlp_download(
     print("Download failed or no MP4 produced.", file=sys.stderr)
     return None
 
+def yt_dlp_search_url(title: str, artist: str) -> Optional[str]:
+    """
+    Search YouTube for 'title artist official music video' and return first video URL.
+    """
+    query = f"{title} {artist} official music video"
+    args = [
+        "yt-dlp",
+        f"ytsearch1:{query}",
+        "--get-url"
+    ]
+    try:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0:
+            url = result.stdout.strip().splitlines()[0]
+            if url.startswith("http"):
+                return url
+    except Exception as e:
+        print(f"yt_dlp_search_url error: {e}", file=sys.stderr)
+    return None
+
 
 def write_kodi_nfo(
     nfo_path: Path,
@@ -255,6 +275,7 @@ def write_kodi_nfo(
     Adds/updates a <source> history block where:
       - <url index="0" ts="ISO8601Z" [channel="..."]>current_youtube_url</url>
       - previous URLs (if any) are shifted to index 1, 2, ... (preserving ts and channel if present)
+    Prevents duplicate source URLs.
     """
     # Prepare base metadata
     root = ET.Element("musicvideo")
@@ -286,6 +307,7 @@ def write_kodi_nfo(
 
     # Collect prior sources, if existing NFO present
     prior_sources: List[Tuple[str, Optional[str], Optional[str]]] = []
+    prior_urls = set()
     if nfo_path.exists():
         try:
             old_tree = ET.parse(nfo_path)
@@ -298,13 +320,15 @@ def write_kodi_nfo(
                         ts_attr = child.attrib.get("ts") or child.attrib.get("timestamp") or child.attrib.get("time")
                         ch_attr = child.attrib.get("channel")
                         prior_sources.append((url_text, ts_attr, ch_attr))
+                        prior_urls.add(url_text)
         except Exception:
             # If parsing fails, ignore and start fresh
             prior_sources = []
+            prior_urls = set()
 
     # Build new source block with current URL at index 0 and shift prior ones
     source_el = ET.SubElement(root, "source")
-    if youtube_url:
+    if youtube_url and youtube_url not in prior_urls:
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         attrs = {"index": "0", "ts": now_ts}
         if youtube_channel:
@@ -312,7 +336,10 @@ def write_kodi_nfo(
         cur_el = ET.SubElement(source_el, "url", attrs)
         cur_el.text = youtube_url
 
+    # Add prior sources, skipping duplicates
     for i, (prev_url, prev_ts, prev_channel) in enumerate(prior_sources, start=1):
+        if prev_url == youtube_url:
+            continue
         attrs = {"index": str(i)}
         if prev_ts:
             attrs["ts"] = prev_ts
@@ -465,9 +492,28 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
 
                 if mp4 is None or not mp4.exists():
                     print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
-                    failed += 1
-                    failed_download_rows.append(row.copy())
-                    continue
+                    # Try yt-dlp search for official music video
+                    search_url = yt_dlp_search_url(title, main_artist)
+                    if search_url and search_url != youtube:
+                        print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
+                        mp4 = yt_dlp_download(
+                            search_url,
+                            out_no_ext,
+                            overwrite=effective_overwrite,
+                            recode_fallback=recode_fallback,
+                        )
+                        if mp4 is not None and mp4.exists():
+                            # Update youtube variable for NFO
+                            youtube = search_url
+                        else:
+                            print(f"[Row {idx}] Search-based download also failed.", file=sys.stderr)
+                            failed += 1
+                            failed_download_rows.append(row.copy())
+                            continue
+                    else:
+                        failed += 1
+                        failed_download_rows.append(row.copy())
+                        continue
 
                 # NFO
                 write_kodi_nfo(nfo_path, title, album, label, year, artists, directors, genres, youtube, youtube_channel, tags)
