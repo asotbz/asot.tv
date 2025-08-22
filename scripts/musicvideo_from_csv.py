@@ -93,6 +93,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable automatic video source searching on download failure",
     )
+    p.add_argument(
+        "--cookies",
+        type=str,
+        default=None,
+        help="Path to cookies.txt file for yt-dlp (optional)",
+    )
     return p.parse_args()
 
 def normalize_header_map(fieldnames: List[str]) -> Dict[str, str]:
@@ -149,6 +155,7 @@ def yt_dlp_download(
     out_no_ext: Path,
     overwrite: bool,
     recode_fallback: bool,
+    cookies_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Download using yt-dlp, aiming for MP4 container."""
     final_mp4 = out_no_ext.with_suffix(".mp4")
@@ -169,6 +176,8 @@ def yt_dlp_download(
         "--remux-video",
         "mp4",
     ]
+    if cookies_path:
+        base_args += ["--cookies", str(cookies_path)]
 
     if overwrite:
         for f in glob.glob(str(out_no_ext) + ".*"):
@@ -196,6 +205,8 @@ def yt_dlp_download(
             "mp4",
             url,
         ]
+        if cookies_path:
+            recode_args += ["--cookies", str(cookies_path)]
         recode_proc = subprocess.run(recode_args)
         if recode_proc.returncode == 0 and final_mp4.exists():
             return final_mp4
@@ -206,7 +217,7 @@ def yt_dlp_download(
     print("Download failed or no MP4 produced.", file=sys.stderr)
     return None
 
-def yt_dlp_search_url(title: str, artist: str) -> Optional[Tuple[str, str]]:
+def yt_dlp_search_url(title: str, artist: str, cookies_path: Optional[Path] = None) -> Optional[Tuple[str, str]]:
     """Search YouTube for 'title artist official music video' and return (video URL, video ID)."""
     query = f"{title} {artist} official music video"
     args = [
@@ -214,6 +225,8 @@ def yt_dlp_search_url(title: str, artist: str) -> Optional[Tuple[str, str]]:
         f"ytsearch1:{query}",
         "--get-id"
     ]
+    if cookies_path:
+        args += ["--cookies", str(cookies_path)]
     try:
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode == 0:
@@ -380,6 +393,7 @@ def process_row(
     no_search: bool,
     url_re: re.Pattern,
     failed_download_rows: List[Dict[str, str]],
+    cookies_path: Optional[Path] = None,
 ) -> Tuple[int, int, int]:
     """Process a single CSV row. Returns (success, skipped, failed) counts."""
     success = skipped = failed = 0
@@ -397,6 +411,18 @@ def process_row(
     fail_row = row.copy()
     fail_row["exists"] = str(exists).lower()
     fail_row["search_attempt"] = "false"
+
+    def yt_dlp_download_with_cookies(url, out_no_ext, overwrite, recode_fallback):
+        return yt_dlp_download(
+            url,
+            out_no_ext,
+            overwrite=overwrite,
+            recode_fallback=recode_fallback,
+            cookies_path=cookies_path,
+        )
+
+    def yt_dlp_search_url_with_cookies(title, artist):
+        return yt_dlp_search_url(title, artist, cookies_path=cookies_path)
 
     if not youtube or not url_re.match(youtube):
         print(f"[Row {idx}] Invalid YouTube URL; skipping download/search.", file=sys.stderr)
@@ -418,7 +444,7 @@ def process_row(
             skipped += 1
             return success, skipped, failed
         else:
-            mp4 = yt_dlp_download(
+            mp4 = yt_dlp_download_with_cookies(
                 youtube,
                 out_no_ext,
                 overwrite=overwrite,
@@ -434,7 +460,7 @@ def process_row(
             print(f"Done: {final_mp4}")
             return success, skipped, failed
 
-    mp4 = yt_dlp_download(
+    mp4 = yt_dlp_download_with_cookies(
         youtube,
         out_no_ext,
         overwrite=overwrite,
@@ -444,13 +470,13 @@ def process_row(
         print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
         if not no_search:
             print(f"[Row {idx}] Attempting search for alternative video...", file=sys.stderr)
-            search_result = yt_dlp_search_url(title, main_artist)
+            search_result = yt_dlp_search_url_with_cookies(title, main_artist)
             if search_result:
                 search_url, search_vid_id = search_result
                 if search_url != youtube:
                     print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
                     fail_row["search_attempt"] = "true"
-                    mp4 = yt_dlp_download(
+                    mp4 = yt_dlp_download_with_cookies(
                         search_url,
                         out_no_ext,
                         overwrite=overwrite,
@@ -520,6 +546,7 @@ def process_csv(
     overwrite: bool,
     recode_fallback: bool,
     no_search: bool = False,
+    cookies_path: Optional[Path] = None,
 ) -> Tuple[int, int, int, List[Dict[str, str]], List[str]]:
     """Download logic for all CSV rows."""
     success = 0
@@ -562,6 +589,7 @@ def process_csv(
                     no_search,
                     url_re,
                     failed_download_rows,
+                    cookies_path,
                 )
                 success += s
                 skipped += sk
@@ -577,6 +605,13 @@ def main() -> None:
     csv_path = Path(args.csv).expanduser().resolve()
     outdir = Path(args.outdir).expanduser().resolve()
 
+    cookies_path = None
+    if getattr(args, "cookies", None):
+        cookies_path = Path(args.cookies).expanduser().resolve()
+        if not cookies_path.exists():
+            print(f"Cookies file not found: {cookies_path}", file=sys.stderr)
+            sys.exit(2)
+
     if not csv_path.exists():
         print(f"CSV not found: {csv_path}", file=sys.stderr)
         sys.exit(2)
@@ -589,6 +624,8 @@ def main() -> None:
     print(f"Overwrite: {'yes' if args.overwrite else 'no'}")
     print(f"Recode fallback: {'yes' if args.recode_fallback else 'no'}")
     print(f"No search: {'yes' if args.no_search else 'no'}")
+    if cookies_path:
+        print(f"Cookies: {cookies_path}")
 
     ok, skipped, bad, failed_rows, fieldnames = process_csv(
         csv_path,
@@ -596,6 +633,7 @@ def main() -> None:
         args.overwrite,
         args.recode_fallback,
         no_search=getattr(args, "no_search", False),
+        cookies_path=cookies_path,
     )
 
     print("\nSummary")
