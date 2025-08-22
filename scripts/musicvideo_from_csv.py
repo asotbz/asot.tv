@@ -484,6 +484,7 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                 existing_mp4 = final_mp4.exists()
                 # Gather all prior source URLs from NFO
                 prior_urls = set()
+                current_source = None
                 if nfo_path.exists():
                     try:
                         old_tree = ET.parse(nfo_path)
@@ -494,8 +495,11 @@ def process_csv(csv_path: Path, outdir: Path, overwrite: bool, recode_fallback: 
                                 url_text = (child.text or "").strip()
                                 if url_text:
                                     prior_urls.add(url_text)
+                                    if child.attrib.get("index") == "0":
+                                        current_source = url_text
                     except Exception:
                         prior_urls = set()
+                        current_source = None
                 # If the CSV download location is already present, skip download
                 if youtube in prior_urls:
                     print(f"[Row {idx}] Source already present in NFO, skipping download: {youtube}", file=sys.stderr)
