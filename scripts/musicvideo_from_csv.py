@@ -212,18 +212,14 @@ def yt_dlp_search_url(title: str, artist: str) -> Optional[Tuple[str, str]]:
     args = [
         "yt-dlp",
         f"ytsearch1:{query}",
-        "--get-url",
         "--get-id"
     ]
     try:
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode == 0:
             lines = result.stdout.strip().splitlines()
-            if len(lines) >= 2:
-                url = lines[0]
-                vid_id = lines[1]
-                if url.startswith("http") and vid_id:
-                    return url, vid_id
+            vid_id = lines[0]
+            return vid_id
     except Exception as e:
         print(f"yt_dlp_search_url error: {e}", file=sys.stderr)
     return None
@@ -449,6 +445,7 @@ def process_row(
             print(f"[Row {idx}] Attempting search for alternative video...", file=sys.stderr)
             search_result = yt_dlp_search_url(title, main_artist)
             if search_result:
+                search_url = f"https://www.youtube.com/watch?v={search_vid_id}"
                 search_url, search_vid_id = search_result
                 if search_url != youtube:
                     print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
