@@ -188,8 +188,20 @@ def yt_dlp_download(
 
     print(f"Downloading (remux): {url}")
     remux_proc = subprocess.run(base_args + [url])
-    if remux_proc.returncode == 0 and final_mp4.exists():
-        return final_mp4
+    # Check for expected file, or any .mp4 file matching the stem
+    if remux_proc.returncode == 0:
+        if final_mp4.exists():
+            return final_mp4
+        # Try to find any matching .mp4 file
+        candidates = list(out_no_ext.parent.glob(out_no_ext.name + "*.mp4"))
+        if candidates:
+            # Optionally rename to final_mp4 for consistency
+            if candidates[0] != final_mp4:
+                try:
+                    candidates[0].rename(final_mp4)
+                except Exception:
+                    return candidates[0]
+            return final_mp4
 
     if recode_fallback:
         print("Remux did not produce MP4; attempting recode fallback...")
@@ -208,8 +220,17 @@ def yt_dlp_download(
         if cookies_path:
             recode_args += ["--cookies", str(cookies_path)]
         recode_proc = subprocess.run(recode_args)
-        if recode_proc.returncode == 0 and final_mp4.exists():
-            return final_mp4
+        if recode_proc.returncode == 0:
+            if final_mp4.exists():
+                return final_mp4
+            candidates = list(out_no_ext.parent.glob(out_no_ext.name + "*.mp4"))
+            if candidates:
+                if candidates[0] != final_mp4:
+                    try:
+                        candidates[0].rename(final_mp4)
+                    except Exception:
+                        return candidates[0]
+                return final_mp4
 
     if final_mp4.exists():
         return final_mp4
