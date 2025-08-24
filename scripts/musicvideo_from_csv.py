@@ -142,10 +142,12 @@ def normalize_name(name: str, max_len: int = 150) -> str:
     return s
 
 def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
-    """Fetch artist metadata from MusicBrainz using python-musicbrainzngs."""
+    """Fetch artist metadata from MusicBrainz using python-musicbrainzngs, with logging."""
     musicbrainzngs.set_useragent("asot.tv-musicvideo-script", "1.0", "example@example.com")
+    print(f"[MusicBrainz] Searching for artist: {artist_name}")
     try:
         result = musicbrainzngs.search_artists(artist=artist_name, limit=1)
+        print(f"[MusicBrainz] Search response: {result}")
         if not result["artist-list"]:
             return {
                 "name": artist_name,
@@ -158,14 +160,16 @@ def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
         artist = result["artist-list"][0]
         mbid = artist.get("id")
         disambiguation = artist.get("disambiguation", "")
-        # Fetch annotation (biography)
         bio = ""
         try:
+            print(f"[MusicBrainz] Fetching details for MBID: {mbid}")
             details = musicbrainzngs.get_artist_by_id(mbid, includes=["annotation", "tags", "genres"])
+            print(f"[MusicBrainz] Details response: {details}")
             bio = details.get("artist", {}).get("annotation", "")
             genres = [g["name"] for g in details.get("artist", {}).get("genre-list", [])]
             tags = [t["name"] for t in details.get("artist", {}).get("tag-list", [])]
-        except Exception:
+        except Exception as e:
+            print(f"[MusicBrainz] Error fetching details: {e}")
             genres = []
             tags = []
         style = ", ".join(tags)
@@ -178,7 +182,8 @@ def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
             "style": style,
             "mood": mood
         }
-    except Exception:
+    except Exception as e:
+        print(f"[MusicBrainz] Error searching artist: {e}")
         return {
             "name": artist_name,
             "disambiguation": "",
@@ -189,16 +194,18 @@ def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
         }
 
 def write_artist_nfo(nfo_path: Path, metadata: dict) -> None:
-    """Write Kodi-compatible artist.nfo XML file (pretty printed)."""
+    """Write Kodi-compatible artist.nfo XML file (pretty printed, omit null/empty elements)."""
     import xml.dom.minidom
     root = ET.Element("artist")
     for tag in ["name", "disambiguation", "biography", "genre", "style", "mood"]:
-        el = ET.SubElement(root, tag)
-        el.text = metadata.get(tag, "")
+        value = metadata.get(tag, "")
+        if value:
+            el = ET.SubElement(root, tag)
+            el.text = value
     xml_bytes = ET.tostring(root, encoding="utf-8")
     pretty_xml = xml.dom.minidom.parseString(xml_bytes).toprettyxml(indent="  ", encoding="utf-8")
+    # minidom.toprettyxml already includes the XML declaration, so don't write it manually
     with nfo_path.open("wb") as f:
-        f.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
         f.write(pretty_xml)
 
 def split_artists(artist_field: str) -> List[str]:
