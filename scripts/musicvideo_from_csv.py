@@ -154,7 +154,7 @@ def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
                 "biography": "",
             }
         artist = result["artist-list"][0]
-        if artist != artist_name:
+        if artist.get("name") != artist_name:
             print(f"[MusicBrainz] Result does not match query: {artist} != {artist_name}")
             return {
                 "name": artist_name,
