@@ -118,6 +118,7 @@ def normalize_header_map(fieldnames: List[str]) -> Dict[str, str]:
     return result
 
 import unicodedata
+import requests
 
 def normalize_name(name: str, max_len: int = 150) -> str:
     """Normalize artist/title: underscores for spaces, lowercase, remove diacritics, remove non-alphanumerics."""
@@ -139,6 +140,66 @@ def normalize_name(name: str, max_len: int = 150) -> str:
     if len(s) > max_len:
         s = s[:max_len].rstrip("_")
     return s
+
+def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
+    """Fetch artist metadata from MusicBrainz REST API using artist name."""
+    base_url = "https://musicbrainz.org/ws/2/artist/"
+    params = {
+        "query": f'artist:"{artist_name}"',
+        "fmt": "json",
+        "limit": 1
+    }
+    headers = {"User-Agent": "asot.tv-musicvideo-script/1.0 (contact: example@example.com)"}
+    try:
+        resp = requests.get(base_url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("artists"):
+            return {}
+        artist = data["artists"][0]
+        mbid = artist.get("id")
+        # Fetch genres, tags, annotation (biography), disambiguation
+        genres = [g["name"] for g in artist.get("genres", [])]
+        tags = [t["name"] for t in artist.get("tags", [])]
+        disambiguation = artist.get("disambiguation", "")
+        # Fetch annotation (biography)
+        bio = ""
+        ann_url = f"https://musicbrainz.org/ws/2/artist/{mbid}?inc=annotation&fmt=json"
+        ann_resp = requests.get(ann_url, headers=headers, timeout=10)
+        if ann_resp.ok:
+            ann_data = ann_resp.json()
+            bio = ann_data.get("annotation", {}).get("text", "")
+        # For style/mood, MusicBrainz does not have explicit fields; use tags as fallback
+        style = ", ".join(tags)
+        mood = ""
+        return {
+            "name": artist.get("name", artist_name),
+            "disambiguation": disambiguation,
+            "biography": bio,
+            "genre": ", ".join(genres),
+            "style": style,
+            "mood": mood
+        }
+    except Exception:
+        return {
+            "name": artist_name,
+            "disambiguation": "",
+            "biography": "",
+            "genre": "",
+            "style": "",
+            "mood": ""
+        }
+
+def write_artist_nfo(nfo_path: Path, metadata: dict) -> None:
+    """Write Kodi-compatible artist.nfo XML file."""
+    root = ET.Element("artist")
+    for tag in ["name", "disambiguation", "biography", "genre", "style", "mood"]:
+        el = ET.SubElement(root, tag)
+        el.text = metadata.get(tag, "")
+    tree = ET.ElementTree(root)
+    with nfo_path.open("wb") as f:
+        f.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+        f.write(ET.tostring(root, encoding="utf-8"))
 
 def split_artists(artist_field: str) -> List[str]:
     """Split multiple artists on comma or semicolon."""
@@ -582,6 +643,7 @@ def process_csv(
     failed = 0
     failed_download_rows: List[Dict[str, str]] = []
     all_fieldnames: List[str] = []
+    unique_artists: dict = {}
 
     url_re = re.compile(r"^https?://[^\s]+$")
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -604,9 +666,18 @@ def process_csv(
                 print(f"  - {r}: {aliases}", file=sys.stderr)
             return (0, 0, 1, [], all_fieldnames)
 
+        # Collect unique raw artist names
+        for row in reader:
+            title, album, artists, label, year, youtube, directors, genres, youtube_channel, tags = extract_row_values(row, hmap)
+            main_artist = artists[0] if artists else "Unknown Artist"
+            if main_artist not in unique_artists:
+                unique_artists[main_artist] = normalize_name(main_artist)
+        # Reset reader for row processing
+        f.seek(0)
+        reader = csv.DictReader(f)
         for idx, row in enumerate(reader, start=2):
             try:
-                s, sk, f = process_row(
+                s, sk, f_ = process_row(
                     idx,
                     row,
                     hmap,
@@ -621,10 +692,19 @@ def process_csv(
                 )
                 success += s
                 skipped += sk
-                failed += f
+                failed += f_
             except Exception as e:
                 print(f"[Row {idx}] Error: {e}", file=sys.stderr)
                 failed += 1
+
+    # For each unique artist, create artist.nfo if missing
+    for raw_artist, norm_artist in unique_artists.items():
+        artist_dir = outdir / norm_artist
+        nfo_path = artist_dir / "artist.nfo"
+        if not nfo_path.exists():
+            ensure_dir(artist_dir)
+            metadata = fetch_musicbrainz_artist_metadata(raw_artist)
+            write_artist_nfo(nfo_path, metadata)
 
     return success, skipped, failed, failed_download_rows, all_fieldnames
 
