@@ -295,7 +295,9 @@ def write_kodi_nfo(
     tags: List[str],
     extra_sources: Optional[List[dict]] = None,
 ) -> None:
-    """Write a Kodi-compatible .nfo file with musicvideo root element."""
+    """Write a Kodi-compatible .nfo file with musicvideo root element and pretty-printed XML."""
+    import xml.dom.minidom
+
     root = ET.Element("musicvideo")
 
     def add_text(tag: str, text: str) -> None:
@@ -306,8 +308,6 @@ def write_kodi_nfo(
     add_text("album", album or "")
     add_text("studio", label or "")
     add_text("year", year or "")
-    # premiered_val = f"{year}-01-01" if year else ""
-    # add_text("premiered", premiered_val)
 
     for d in (directors or []):
         if d and d.strip():
@@ -366,12 +366,15 @@ def write_kodi_nfo(
         cur_el = ET.SubElement(sources_el, "url", attrs)
         cur_el.text = youtube_url
 
-    top_level = ET.ElementTree()
-    elements = [root, sources_el]
-    with nfo_path.open("wb") as f:
-        f.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
-        for el in elements:
-            f.write(ET.tostring(el, encoding="utf-8"))
+    # Attach <sources> as child of <musicvideo>
+    root.append(sources_el)
+
+    # Pretty print XML
+    xml_bytes = ET.tostring(root, encoding="utf-8")
+    pretty_xml = xml.dom.minidom.parseString(xml_bytes).toprettyxml(indent="  ", encoding="utf-8")
+    xml_str = pretty_xml.decode("utf-8") if isinstance(pretty_xml, bytes) else str(pretty_xml)
+    with nfo_path.open("w", encoding="utf-8") as f:
+        f.write(xml_str)
 
 def extract_row_values(
     row: Dict[str, str],
