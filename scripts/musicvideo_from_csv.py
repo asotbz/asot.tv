@@ -117,19 +117,27 @@ def normalize_header_map(fieldnames: List[str]) -> Dict[str, str]:
             result[canon] = found
     return result
 
-def sanitize_component(name: str, max_len: int = 150) -> str:
-    """Make a filesystem-safe path component."""
+import unicodedata
+
+def normalize_name(name: str, max_len: int = 150) -> str:
+    """Normalize artist/title: underscores for spaces, lowercase, remove diacritics, remove non-alphanumerics."""
     if not name:
         return "unknown"
-    s = name.strip()
-    s = _reserved_re.sub("_", s)
-    s = re.sub(r"\s+", " ", s)
+    s = name.strip().lower()
+    # Remove diacritics
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    # Replace spaces with underscores
+    s = re.sub(r"\s+", "_", s)
+    # Remove non-alphanumeric/underscore
+    s = re.sub(r"[^a-z0-9_]", "", s)
+    # Collapse multiple underscores
     s = re.sub(r"_+", "_", s)
-    s = s.strip(" .")
+    s = s.strip("_")
     if not s:
         s = "unknown"
     if len(s) > max_len:
-        s = s[:max_len].rstrip(" ._")
+        s = s[:max_len].rstrip("_")
     return s
 
 def split_artists(artist_field: str) -> List[str]:
@@ -173,7 +181,7 @@ def yt_dlp_download(
         out_template,
         "--no-part",
         "--restrict-filenames",
-        "--remux-video",
+        "--preset-alias",
         "mp4",
     ]
     if cookies_path:
@@ -420,12 +428,11 @@ def process_row(
     success = skipped = failed = 0
     title, album, artists, label, year, youtube, directors, genres, youtube_channel, tags = extract_row_values(row, hmap)
     main_artist = artists[0] if artists else "Unknown Artist"
-    artist_dir = sanitize_component(main_artist)
-    album_dir = sanitize_component(album)
-    title_stem = sanitize_component(title)
-    target_dir = outdir / artist_dir / album_dir
+    normalized_artist = normalize_name(main_artist)
+    normalized_title = normalize_name(title)
+    target_dir = outdir / normalized_artist
     ensure_dir(target_dir)
-    out_no_ext = target_dir / title_stem
+    out_no_ext = target_dir / normalized_title
     final_mp4 = out_no_ext.with_suffix(".mp4")
     nfo_path = out_no_ext.with_suffix(".nfo")
     exists = final_mp4.exists()
