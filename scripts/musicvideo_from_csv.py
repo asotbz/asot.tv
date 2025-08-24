@@ -144,6 +144,7 @@ def normalize_name(name: str, max_len: int = 150) -> str:
 def write_artist_nfo(nfo_path: Path, artist_name: str) -> None:
     """Write Kodi-compatible artist.nfo XML file with only <name> from CSV."""
     import xml.dom.minidom
+    print (f"[{artist_name}] Writing artist.nfo: {nfo_path}")
     root = ET.Element("artist")
     el = ET.SubElement(root, "name")
     el.text = artist_name
