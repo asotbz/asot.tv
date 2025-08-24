@@ -118,7 +118,6 @@ def normalize_header_map(fieldnames: List[str]) -> Dict[str, str]:
     return result
 
 import unicodedata
-import musicbrainzngs
 
 def normalize_name(name: str, max_len: int = 150) -> str:
     """Normalize artist/title: underscores for spaces, lowercase, remove diacritics, remove non-alphanumerics."""
@@ -141,59 +140,18 @@ def normalize_name(name: str, max_len: int = 150) -> str:
         s = s[:max_len].rstrip("_")
     return s
 
-def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
-    """Fetch artist metadata from MusicBrainz using python-musicbrainzngs, with logging."""
-    musicbrainzngs.set_useragent("asot.tv-musicvideo-script", "1.0", "example@example.com")
-    print(f"[MusicBrainz] Searching for artist: {artist_name}")
-    try:
-        result = musicbrainzngs.search_artists(artist=artist_name, country="US", limit=1)
-        print(f"[MusicBrainz] Search response: {result}")
-        if not result["artist-list"]:
-            return {
-                "name": artist_name,
-                "biography": "",
-            }
-        artist = result["artist-list"][0]
-        if artist.get("name") != artist_name:
-            print(f"[MusicBrainz] Result does not match query: {artist} != {artist_name}")
-            return {
-                "name": artist_name,
-                "biography": "",
-            }
-        mbid = artist.get("id")
-        bio = ""
-        try:
-            print(f"[MusicBrainz] Fetching details for MBID: {mbid}")
-            details = musicbrainzngs.get_artist_by_id(mbid, includes=["annotation"])
-            print(f"[MusicBrainz] Details response: {details}")
-            bio = details.get("artist", {}).get("annotation", "")
-        except Exception as e:
-            print(f"[MusicBrainz] Error fetching details: {e}")
-        return {
-            "name": artist.get("name", artist_name),
-            "biography": bio,
-        }
-    except Exception as e:
-        print(f"[MusicBrainz] Error searching artist: {e}")
-        return {
-            "name": artist_name,
-            "biography": "",
-        }
 
-def write_artist_nfo(nfo_path: Path, metadata: dict) -> None:
-    """Write Kodi-compatible artist.nfo XML file (pretty printed, omit null/empty elements)."""
+def write_artist_nfo(nfo_path: Path, artist_name: str) -> None:
+    """Write Kodi-compatible artist.nfo XML file with only <name> from CSV."""
     import xml.dom.minidom
     root = ET.Element("artist")
-    for tag in ["name", "biography"]:
-        value = metadata.get(tag, "")
-        if value:
-            el = ET.SubElement(root, tag)
-            el.text = value
+    el = ET.SubElement(root, "name")
+    el.text = artist_name
     xml_bytes = ET.tostring(root, encoding="utf-8")
     pretty_xml = xml.dom.minidom.parseString(xml_bytes).toprettyxml(indent="  ", encoding="utf-8")
-    # minidom.toprettyxml already includes the XML declaration, so don't write it manually
-    with nfo_path.open("wb") as f:
-        f.write(pretty_xml)
+    xml_str = pretty_xml.decode("utf-8") if isinstance(pretty_xml, bytes) else str(pretty_xml)
+    with nfo_path.open("w", encoding="utf-8") as f:
+        f.write(xml_str)
 
 def split_artists(artist_field: str) -> List[str]:
     """Split multiple artists on comma or semicolon."""
@@ -697,8 +655,7 @@ def process_csv(
         nfo_path = artist_dir / "artist.nfo"
         if not nfo_path.exists():
             ensure_dir(artist_dir)
-            metadata = fetch_musicbrainz_artist_metadata(raw_artist)
-            write_artist_nfo(nfo_path, metadata)
+            write_artist_nfo(nfo_path, raw_artist)
 
     return success, skipped, failed, failed_download_rows, all_fieldnames
 
