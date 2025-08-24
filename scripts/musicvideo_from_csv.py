@@ -118,7 +118,7 @@ def normalize_header_map(fieldnames: List[str]) -> Dict[str, str]:
     return result
 
 import unicodedata
-import requests
+import musicbrainzngs
 
 def normalize_name(name: str, max_len: int = 150) -> str:
     """Normalize artist/title: underscores for spaces, lowercase, remove diacritics, remove non-alphanumerics."""
@@ -142,34 +142,32 @@ def normalize_name(name: str, max_len: int = 150) -> str:
     return s
 
 def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
-    """Fetch artist metadata from MusicBrainz REST API using artist name."""
-    base_url = "https://musicbrainz.org/ws/2/artist/"
-    params = {
-        "query": f'artist:"{artist_name}"',
-        "fmt": "json",
-        "limit": 1
-    }
-    headers = {"User-Agent": "asot.tv-musicvideo-script/1.0 (contact: example@example.com)"}
+    """Fetch artist metadata from MusicBrainz using python-musicbrainzngs."""
+    musicbrainzngs.set_useragent("asot.tv-musicvideo-script", "1.0", "example@example.com")
     try:
-        resp = requests.get(base_url, params=params, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if not data.get("artists"):
-            return {}
-        artist = data["artists"][0]
+        result = musicbrainzngs.search_artists(artist=artist_name, limit=1)
+        if not result["artist-list"]:
+            return {
+                "name": artist_name,
+                "disambiguation": "",
+                "biography": "",
+                "genre": "",
+                "style": "",
+                "mood": ""
+            }
+        artist = result["artist-list"][0]
         mbid = artist.get("id")
-        # Fetch genres, tags, annotation (biography), disambiguation
-        genres = [g["name"] for g in artist.get("genres", [])]
-        tags = [t["name"] for t in artist.get("tags", [])]
         disambiguation = artist.get("disambiguation", "")
         # Fetch annotation (biography)
         bio = ""
-        ann_url = f"https://musicbrainz.org/ws/2/artist/{mbid}?inc=annotation&fmt=json"
-        ann_resp = requests.get(ann_url, headers=headers, timeout=10)
-        if ann_resp.ok:
-            ann_data = ann_resp.json()
-            bio = ann_data.get("annotation", {}).get("text", "")
-        # For style/mood, MusicBrainz does not have explicit fields; use tags as fallback
+        try:
+            details = musicbrainzngs.get_artist_by_id(mbid, includes=["annotation", "tags", "genres"])
+            bio = details.get("artist", {}).get("annotation", "")
+            genres = [g["name"] for g in details.get("artist", {}).get("genre-list", [])]
+            tags = [t["name"] for t in details.get("artist", {}).get("tag-list", [])]
+        except Exception:
+            genres = []
+            tags = []
         style = ", ".join(tags)
         mood = ""
         return {
@@ -191,15 +189,17 @@ def fetch_musicbrainz_artist_metadata(artist_name: str) -> dict:
         }
 
 def write_artist_nfo(nfo_path: Path, metadata: dict) -> None:
-    """Write Kodi-compatible artist.nfo XML file."""
+    """Write Kodi-compatible artist.nfo XML file (pretty printed)."""
+    import xml.dom.minidom
     root = ET.Element("artist")
     for tag in ["name", "disambiguation", "biography", "genre", "style", "mood"]:
         el = ET.SubElement(root, tag)
         el.text = metadata.get(tag, "")
-    tree = ET.ElementTree(root)
+    xml_bytes = ET.tostring(root, encoding="utf-8")
+    pretty_xml = xml.dom.minidom.parseString(xml_bytes).toprettyxml(indent="  ", encoding="utf-8")
     with nfo_path.open("wb") as f:
         f.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
-        f.write(ET.tostring(root, encoding="utf-8"))
+        f.write(pretty_xml)
 
 def split_artists(artist_field: str) -> List[str]:
     """Split multiple artists on comma or semicolon."""
@@ -526,10 +526,10 @@ def process_row(
             # Video exists, but NFO does not; create NFO and skip download
             write_kodi_nfo(nfo_path, title, album, label, year, artists, directors, genres, youtube, youtube_channel, tags)
             skipped += 1
-            print(f"[Row {idx}] Video exists, NFO created: {final_mp4}")
+            print(f"[Row {idx}][{artists} - {title}] Video exists, NFO created: {final_mp4}")
             return success, skipped, failed
         if youtube in prior_urls:
-            print(f"[Row {idx}] Video exists and source matches; skipping download: {youtube}", file=sys.stderr)
+            print(f"[Row {idx}][{artists} - {title}] Video exists and source matches; skipping download: {youtube}", file=sys.stderr)
             skipped += 1
             return success, skipped, failed
         else:
@@ -546,7 +546,7 @@ def process_row(
                 return success, skipped, failed
             write_kodi_nfo(nfo_path, title, album, label, year, artists, directors, genres, youtube, youtube_channel, tags)
             success += 1
-            print(f"Done: {final_mp4}")
+            print(f"[Row {idx}][{artists} - {title}] Done: {final_mp4}")
             return success, skipped, failed
 
     mp4 = yt_dlp_download_with_cookies(
@@ -558,12 +558,12 @@ def process_row(
     if mp4 is None or not mp4.exists():
         print(f"[Row {idx}] Download failed for: {title} ({youtube})", file=sys.stderr)
         if not no_search:
-            print(f"[Row {idx}] Attempting search for alternative video...", file=sys.stderr)
+            print(f"[Row {idx}][{artists} - {title}] Attempting search for alternative video...", file=sys.stderr)
             search_result = yt_dlp_search_url_with_cookies(title, main_artist)
             if search_result:
                 search_url, search_vid_id = search_result
                 if search_url != youtube:
-                    print(f"[Row {idx}] Attempting search-based download: {search_url}", file=sys.stderr)
+                    print(f"[Row {idx}][{artists} - {title}] Attempting search-based download: {search_url}", file=sys.stderr)
                     fail_row["search_attempt"] = "true"
                     mp4 = yt_dlp_download_with_cookies(
                         search_url,
@@ -610,7 +610,7 @@ def process_row(
                         failed_download_rows.append(fail_row)
                         return success, skipped, failed
                 else:
-                    print(f"[Row {idx}] Search returned same URL; not retrying.", file=sys.stderr)
+                    print(f"[Row {idx}][{artists} - {title}] Search returned same URL; not retrying.", file=sys.stderr)
                     failed += 1
                     failed_download_rows.append(fail_row)
                     return success, skipped, failed
