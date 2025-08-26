@@ -1,0 +1,38 @@
+content:
+  - smart_collection: "90s Pop Music Videos"
+    key: "MV_90S_POP"
+    order: "shuffle"
+
+  - smart_collection: "90s Hip Hop Music Videos"
+    key: "MV_90S_HIPHOP"
+    order: "shuffle"
+
+  - smart_collection: "90s Metal Music Videos"
+    key: "MV_90S_METAL"
+    order: "shuffle"
+
+  - smart_collection: "90s Rock Music Videos"
+    key: "MV_90S_ROCK"
+    order: "shuffle"
+        
+playout:
+  - duration: "1 hour"
+    content: "MV_90S_POP"
+    custom_title: "Bubblewrapped Gold"
+    discard_attempts: 3
+    stop_before_end: false
+  - duration: "1 hour"
+    content: "MV_90S_HIPHOP"
+    custom_title: "Boombox Doctrine"
+    discard_attempts: 3
+    stop_before_end: false
+  - duration: "1 hour"
+    content: "MV_90S_METAL"
+    custom_title: "Amp'd & Anarchy"
+    discard_attempts: 3
+    stop_before_end: false
+  - duration: "1 hour"
+    content: "MV_90S_ROCK"
+    custom_title: "Static Revival"
+    discard_attempts: 3
+    stop_before_end: false

@@ -1,0 +1,28 @@
+content:
+  - smart_collection: "All Eurovision Music Videos"
+    key: "MAIN"
+    order: "shuffle"
+    
+  - collection: "Eurovision Bumpers"
+    key: "BUMPERS"
+    order: "shuffle"
+
+sequence:
+  - key: "MAINBLOCK"
+    items:
+      - watermark: false 
+      - count: 1
+        content: "BUMPERS"
+        filler_kind: "preroll"
+      - watermark: true
+        name: "Eurovision Non-Stop Monochrome"
+      - watermark: true
+        name: "Eurovision Non-Stop" 
+      - watermark: true
+        name: "Eurovision Non-Stop dupe" 
+      - count: 2
+        content: "MAIN"
+        
+playout:
+  - sequence: "MAINBLOCK"
+  - repeat: true
