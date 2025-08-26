@@ -18,24 +18,42 @@ content:
 playout:
   - epg_group: true
     advance: true
-  - duration: "1 hour"
-    content: "MV_90S_POP"
-    custom_title: "Bubblewrapped Gold"
-    discard_attempts: 3
-    stop_before_end: false
-  - duration: "1 hour"
-    content: "MV_90S_HIPHOP"
-    custom_title: "Boombox Doctrine"
-    discard_attempts: 3
-    stop_before_end: false
+  - watermark: true
+    name: "asot.tv Music logo"
   - duration: "1 hour"
     content: "MV_90S_METAL"
     custom_title: "Amp'd & Anarchy"
     discard_attempts: 3
     stop_before_end: false
+  - epg_group: false
+  - epg_group: true
+    advance: true
+  - watermark: true
+    name: "asot.tv Music logo"
   - duration: "1 hour"
     content: "MV_90S_ROCK"
     custom_title: "Static Revival"
     discard_attempts: 3
     stop_before_end: false
   - epg_group: false
+  - epg_group: true
+    advance: true
+  - watermark: true
+    name: "asot.tv Music logo"
+  - duration: "1 hour"
+    content: "MV_90S_POP"
+    custom_title: "Bubblewrapped Gold"
+    discard_attempts: 3
+    stop_before_end: false
+  - epg_group: false
+  - epg_group: true
+    advance: true
+  - watermark: true
+    name: "asot.tv Music logo"
+  - duration: "1 hour"
+    content: "MV_90S_HIPHOP"
+    custom_title: "Boombox Doctrine"
+    discard_attempts: 3
+    stop_before_end: false
+  - epg_group: false
+  - repeat: true
