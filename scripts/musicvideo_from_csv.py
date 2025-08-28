@@ -320,7 +320,9 @@ def write_kodi_nfo(
             add_text("artist", a.strip())
 
     if tags:
-        add_text("tag", ", ".join([t for t in tags if t.strip()]))
+        for t in tags:
+            if t.strip():
+                add_text("tag", t.strip())
 
     prior_sources: List[dict] = []
     prior_urls = set()
