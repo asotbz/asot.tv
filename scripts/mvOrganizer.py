@@ -323,6 +323,7 @@ class MusicVideoOrganizer:
     def create_artist_nfo(self, artist_name: str, artist_nfo_path: Path) -> None:
         """Create artist.nfo file if it doesn't exist."""
         if artist_nfo_path.exists():
+            print(f"  {Colors.GREEN}artist.nfo exists{Colors.ENDC}")
             return
         
         # Create artist NFO
@@ -372,7 +373,10 @@ class MusicVideoOrganizer:
         
         if video_exists:
             print(f"  {Colors.CYAN}Video already exists{Colors.ENDC}")
-            
+
+            # Check and create artist.nfo if missing
+            self.create_artist_nfo(artist, artist_nfo_path)
+
             # Create NFO if missing
             if existing_root is None:
                 print(f"  {Colors.WARNING}Creating missing NFO file{Colors.ENDC}")
@@ -386,8 +390,6 @@ class MusicVideoOrganizer:
                 self.write_nfo(nfo_path, root)
                 self.stats['nfo_created'] += 1
                 
-                # Check and create artist.nfo if missing
-                self.create_artist_nfo(artist, artist_nfo_path)
             else:
                 # Check if we should redownload
                 youtube_url = row.get('youtube_url', '').strip()
