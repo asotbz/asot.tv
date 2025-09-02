@@ -1,117 +1,287 @@
-# Music Video CSV Downloader (.nfo generator)
+# mvOrganizer - Music Video Downloader and Organizer for Kodi
 
-Downloads YouTube links from a CSV and writes Kodi-compatible .nfo files beside the videos. Script: [scripts/musicvideo_from_csv.py](scripts/musicvideo_from_csv.py)
+A Python tool that automates the downloading, organization, and metadata generation for music videos using CSV input. The output is structured for Kodi media center compatibility.
 
-Features
-- Best-quality download via yt-dlp; final container MP4 (remux; optional recode fallback).
-- Output layout: <outdir>/<Artist>/<Album>/<Title>.mp4 plus a sibling .nfo.
-- Flexible, case-insensitive CSV headers with common aliases.
-- Filesystem-safe sanitization of Artist/Album/Title.
-- Clear logging and summary.
-- Maintains a source history in the .nfo under <source> with ordered <url index="n" ts="YYYY-MM-DDThh:mm:ssZ" channel="YouTubeChannel">...</url> entries; index 0 is always the most recent YouTube URL.
+## Features
 
-Requirements
-- Python 3.8+
-- yt-dlp
-- ffmpeg
+- **Automated Downloads**: Downloads music videos from YouTube using yt-dlp
+- **Smart Organization**: Creates artist/title directory structure
+- **Kodi Integration**: Generates NFO metadata files compatible with Kodi
+- **Duplicate Handling**: Intelligently manages existing videos and metadata
+- **Search Fallback**: Automatically searches YouTube when URLs are missing
+- **Rate Limiting**: Built-in throttling to respect YouTube's rate limits
+- **Progress Tracking**: Color-coded terminal output with detailed progress
 
-Install
-- macOS (Homebrew):
+## Installation
 
-```bash
-brew install yt-dlp ffmpeg
-```
+### Prerequisites
 
-- Python (optional, via pipx for isolated install of yt-dlp):
+1. **Python 3.6+** installed on your system
+2. **yt-dlp** - Install via pip:
+   ```bash
+   pip install yt-dlp
+   ```
+3. **ffmpeg** - Required for video processing:
+   - **macOS**: `brew install ffmpeg`
+   - **Ubuntu/Debian**: `sudo apt install ffmpeg`
+   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
 
-```bash
-pipx install yt-dlp
-```
+### Script Installation
 
-Usage
-- Basic:
+1. Clone or download the repository
+2. Make the script executable:
+   ```bash
+   chmod +x mvOrganizer.py
+   ```
 
-```bash
-python3 scripts/musicvideo_from_csv.py --csv data/tracks.csv --outdir output/musicvideos
-```
+## Usage
 
-- With fallback to recode if remux cannot produce MP4:
-
-```bash
-python3 scripts/musicvideo_from_csv.py --csv data/tracks.csv --outdir output/musicvideos --recode-fallback
-```
-
-- Overwrite existing MP4s:
+### Basic Command
 
 ```bash
-python3 scripts/musicvideo_from_csv.py --csv data/tracks.csv --outdir output/musicvideos --overwrite
+python mvOrganizer.py input.csv -o /path/to/output
 ```
 
-CSV schema
-- Required fields (case-insensitive). Accepted header names:
-  - year: year, release_year
-  - title: title, track, track_title
-  - artist: artist, artists
-  - album: album
-  - label: label, record_label, studio
-  - youtube: youtube, youtube_url, link, url
-- Optional fields (case-insensitive). Accepted header names:
-  - director: director, directed_by
-  - genre: genre, genres, style
-  - youtube_channel: youtube_channel, channel, uploader, youtube_uploader, youtube_channel_name
-  - tag: tag, tags
+### Command-Line Options
 
-Sample CSV
+| Option | Description |
+|--------|-------------|
+| `csv_file` | Path to CSV file containing music video metadata (required) |
+| `-o, --output-dir` | Base output directory for organized videos (required) |
+| `--overwrite` | Re-download existing videos from new URLs |
+| `--no-search` | Disable YouTube search fallback |
+| `--cookies` | Cookie file for YouTube authentication |
+
+### Examples
+
+```bash
+# Basic usage
+python mvOrganizer.py videos.csv -o /media/MusicVideos
+
+# Force re-download with new URLs
+python mvOrganizer.py videos.csv -o ./output --overwrite
+
+# Disable search fallback and use cookies for auth
+python mvOrganizer.py videos.csv -o ./output --no-search --cookies cookies.txt
+```
+
+## CSV Format
+
+### Required Fields
+
+- **artist**: Artist name
+- **title**: Song title
+
+### Optional Fields
+
+- **year**: Release year (YYYY format)
+- **album**: Album name
+- **label**: Record label
+- **genre**: Music genre (e.g., Rock, Pop, Hip Hop/R&B)
+- **director**: Music video director
+- **tag**: Comma-separated tags
+- **youtube_url**: YouTube video URL
+
+### Example CSV
 
 ```csv
-Year,Title,Artist,Album,Label,YouTube,Director,Genre,YouTube_Channel,Tag
-2020,Example Track,Example Artist,Example Album,Example Label,https://www.youtube.com/watch?v=dQw4w9WgXcQ,Jane Doe,Pop,ExampleChannel,party; feel good
+year,artist,title,album,label,genre,director,tag,youtube_url
+2023,The Weeknd,Blinding Lights,After Hours,Republic,Pop,Anton Tammi,"synthwave,80s",https://www.youtube.com/watch?v=4NRXx6U8ABQ
+2022,Dua Lipa,Levitating,Future Nostalgia,Warner,Pop,,"disco,dance",
+2021,Olivia Rodrigo,good 4 u,SOUR,Geffen,Rock,Petra Collins,"pop punk,teen",https://www.youtube.com/watch?v=gNi_6U5Pm_o
 ```
 
-- Alternate headers are accepted, e.g.:
+### Field Aliases
 
-```csv
-release_year,track_title,artist,album,record_label,youtube_url,directed_by,genres,channel,tags
-2019,Alt Track,Alt Artist,Alt Album,Alt Label,https://youtu.be/abc123,John Smith,Rock;Alternative,AltUploader,uplifting; 90s
+The script recognizes common field name variations:
+- `artists` → `artist`
+- `song` or `track` → `title`
+- `record_label` → `label`
+- `youtube` or `url` → `youtube_url`
+- `tags` → `tag`
+
+## Output Structure
+
+### Directory Layout
+
+```
+output_dir/
+├── the_weeknd/
+│   ├── blinding_lights.mp4
+│   └── blinding_lights.nfo
+├── dua_lipa/
+│   ├── levitating.mp4
+│   └── levitating.nfo
+└── olivia_rodrigo/
+    ├── good_4_u.mp4
+    └── good_4_u.nfo
 ```
 
-Output layout
-- Videos: <outdir>/<Artist>/<Album>/<Title>.mp4
-- NFOs:   <outdir>/<Artist>/<Album>/<Title>.nfo
+### File Naming
 
-Kodi .nfo example
+- Converted to lowercase
+- Special characters are removed
+- Diacritics are normalized (ä → a, é → e)
+- Spaces are replaced with underscores
+- Multiple underscores are condensed to single
+
+### NFO Format
+
+Generated NFO files follow Kodi's musicvideo specification:
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <musicvideo>
-  <title>Example Track</title>
-  <album>Example Album</album>
-  <studio>Example Label</studio>
-  <year>2020</year>
-  <director>Jane Doe</director>
-  <genre>Pop</genre>
-  <artist>Example Artist</artist>
-  <tag>party, feel good</tag>
-  <source>
-    <url index="0" ts="2025-08-15T18:30:00Z" channel="ExampleChannel">https://www.youtube.com/watch?v=dQw4w9WgXcQ</url>
-    <!-- older entries (if any) are shifted to index="1", "2", ... -->
-  </source>
+    <year>2023</year>
+    <artist>The Weeknd</artist>
+    <title>Blinding Lights</title>
+    <album>After Hours</album>
+    <studio>Republic</studio>
+    <genre>Pop</genre>
+    <director>Anton Tammi</director>
+    <tag>synthwave</tag>
+    <tag>80s</tag>
+    <sources>
+        <url ts="2024-01-15T10:30:00" failed="false" search="false">https://www.youtube.com/watch?v=4NRXx6U8ABQ</url>
+    </sources>
 </musicvideo>
 ```
 
-Notes
-- Multiple artists/directors/genres can be separated by comma or semicolon; each becomes its own tag element.
-- The Tag field accepts comma or semicolon; values are written into a single <tag> element as a comma-separated list.
-- The .nfo maintains a source history: on each run, the current YouTube URL is written as <url index="0" ts="..." channel="YouTubeChannel"/> and any previous URLs (if present) are shifted to index="1", "2", etc.
-- Filenames are sanitized: reserved characters <>:"/\\|?* are replaced with underscores; whitespace/dots trimmed.
-- Existing outputs are skipped unless --overwrite is given.
-- Requires yt-dlp and ffmpeg in PATH.
+## Download Logic
 
-Troubleshooting
-- Missing dependencies:
+### New Videos (File Doesn't Exist)
 
-```bash
-brew install yt-dlp ffmpeg
+1. **URL Provided**: Attempts download from provided YouTube URL
+2. **No URL/Failed**: Searches YouTube for "{artist} {title} official music video"
+3. **Tracking**: Records all attempted URLs with timestamps in NFO
+
+### Existing Videos (File Exists)
+
+1. **NFO Check**: Creates NFO if missing
+2. **URL Comparison**: Checks if CSV URL is already in sources
+3. **Overwrite Mode**: Downloads from new URL if `--overwrite` flag is set
+4. **Skip**: Skips download if URL exists in sources or overwrite is disabled
+
+## Error Handling
+
+- **Dependency Check**: Verifies yt-dlp and ffmpeg are installed
+- **CSV Validation**: Checks for required fields and proper formatting
+- **Download Failures**: Logs errors and continues processing
+- **Network Issues**: Implements retry logic with exponential backoff
+- **Invalid URLs**: Validates YouTube URLs before attempting download
+
+## Rate Limiting
+
+Built-in throttling to avoid YouTube rate limits:
+- 1 second delay between requests
+- 1 second interval between downloads
+- 5 minute retry sleep for fragment failures
+
+## Terminal Output
+
+Color-coded output for easy monitoring:
+- 🟦 **Blue**: Download in progress
+- 🟩 **Green**: Successful operations
+- 🟨 **Yellow**: Warnings and skipped items
+- 🔴 **Red**: Errors and failures
+- 🟣 **Purple**: Headers and important info
+
+### Sample Output
+
+```
+Music Video Organizer
+Processing: videos.csv
+Output directory: /media/MusicVideos
+------------------------------------------------------------
+
+[Row 2] The Weeknd - Blinding Lights
+  Downloading from: https://www.youtube.com/watch?v=4NRXx6U8ABQ
+  ✓ Download successful
+  Output: the_weeknd/blinding_lights.mp4
+
+[Row 3] Dua Lipa - Levitating
+  Searching YouTube: Dua Lipa Levitating official music video
+  Found video: https://www.youtube.com/watch?v=TUVcZfQe-Kw
+  ✓ Download successful
+  Output: dua_lipa/levitating.mp4
+
+============================================================
+Processing Summary
+------------------------------------------------------------
+Total processed: 3
+Downloaded: 2
+Skipped: 0
+Failed: 1
+NFO files created: 3
+============================================================
 ```
 
-- If remux fails to produce MP4, add --recode-fallback.
+## Tips and Best Practices
+
+### CSV Preparation
+
+1. **Clean Data**: Remove extra spaces and special characters
+2. **Validate URLs**: Ensure YouTube URLs are correct format
+3. **Consistent Genres**: Use standardized genre names for better organization
+4. **Director Credits**: Preserve full names (e.g., "Anton Tammi")
+
+### Performance Optimization
+
+1. **Batch Processing**: Process large CSV files overnight
+2. **Network Stability**: Ensure stable internet connection
+3. **Storage Space**: Verify adequate disk space (videos can be 100-500MB each)
+
+### Kodi Integration
+
+1. **Library Updates**: Set Kodi to auto-scan the output directory
+2. **Thumbnail Support**: Kodi will fetch thumbnails from YouTube
+3. **Custom Tags**: Use tags for smart playlists in Kodi
+
+### Authentication
+
+If you encounter authentication issues:
+
+1. Export cookies from your browser using a cookie extension
+2. Save as `cookies.txt` in Netscape format
+3. Use `--cookies cookies.txt` flag
+
+## Troubleshooting
+
+### Common Issues
+
+**yt-dlp not found**
+```bash
+pip install --upgrade yt-dlp
+```
+
+**ffmpeg not found**
+- Ensure ffmpeg is in your system PATH
+- Test with: `ffmpeg -version`
+
+**Download failures**
+- Check internet connection
+- Try with `--cookies` if authentication required
+- Verify YouTube URL is valid
+
+**Permission denied**
+- Ensure write permissions for output directory
+- Run with appropriate user privileges
+
+## License
+
+This tool is for personal use only. Respect copyright laws and YouTube's Terms of Service.
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+- Code follows PEP 8 style guidelines
+- Functions include docstrings
+- New features include documentation
+
+## Version History
+
+- **1.0.0** - Initial release with core functionality
+  - CSV processing
+  - YouTube downloading
+  - NFO generation
+  - Kodi compatibility
