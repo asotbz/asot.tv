@@ -323,7 +323,7 @@ class MusicVideoOrganizer:
     def create_artist_nfo(self, artist_name: str, artist_nfo_path: Path) -> None:
         """Create artist.nfo file if it doesn't exist."""
         if artist_nfo_path.exists():
-            print(f"  {Colors.GREEN}artist.nfo exists{Colors.ENDC}")
+            print(f"  {Colors.CYAN}artist.nfo exists{Colors.ENDC}")
             return
         
         # Create artist NFO
@@ -333,7 +333,7 @@ class MusicVideoOrganizer:
         
         # Write with pretty printing
         self.write_nfo(artist_nfo_path, root)
-        print(f"  {Colors.GREEN}Created artist.nfo{Colors.ENDC}")
+        print(f"  {Colors.GREEN}✓ Created artist.nfo{Colors.ENDC}")
     
     def process_video(self, row: Dict[str, str], row_num: int) -> None:
         """
@@ -469,8 +469,7 @@ class MusicVideoOrganizer:
         try:
             with open(csv_path, 'r', encoding='utf-8') as f:
                 # Detect delimiter
-                sample = f.read(1024)
-                f.seek(0)
+                sample = f.readline()
                 sniffer = csv.Sniffer()
                 delimiter = sniffer.sniff(sample).delimiter
                 
