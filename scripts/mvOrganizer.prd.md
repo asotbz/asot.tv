@@ -34,14 +34,15 @@ Automate downloading, organizing, and metadata generation for music videos using
 3. Record all unique attempted sources with timestamps
 
 **Existing Video (file exists):**
-1. Check for NFO file; create if missing
-2. Skip if URL not unique in sources
-3. With `--overwrite` flag: attempt download from new URL (no search fallback)
+1. Check for video NFO file; create if missing
+2. Check for artist.nfo file; create if missing
+3. Skip if URL not unique in sources
+4. With `--overwrite` flag: attempt download from new URL (no search fallback)
 
 ### 3. File Organization
 **Naming Convention**:
 - Convert to lowercase
-- Remove special characters
+- Remove special characters (including hyphens)
 - Normalize diacritics (ä → a)
 - Replace spaces with underscores
 
@@ -49,9 +50,12 @@ Automate downloading, organizing, and metadata generation for music videos using
 
 **Output Files**:
 - `{title}.mp4` - Video file
-- `{title}.nfo` - Metadata file
+- `{title}.nfo` - Video metadata file
+- `artist.nfo` - Artist metadata file (one per artist directory)
 
 ### 4. NFO Metadata Generation
+
+#### Video NFO Files
 **XML Structure**:
 ```xml
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -79,6 +83,21 @@ Automate downloading, organizing, and metadata generation for music videos using
   - `ts`: Download attempt timestamp
   - `failed`: Set if download failed
   - `search`: Set if URL from search
+
+#### Artist NFO Files
+**XML Structure**:
+```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<artist>
+    <name>Artist Name</name>
+</artist>
+```
+
+**Notes**:
+- Created once per artist directory
+- Never overwritten if already exists
+- Uses original artist name (not normalized)
+- Pretty-printed XML format
 - De-duplicate source URLs (keep latest timestamp)
 
 ## CLI Options

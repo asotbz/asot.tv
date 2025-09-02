@@ -69,13 +69,13 @@ class MusicVideoOrganizer:
     
     def normalize_filename(self, text: str) -> str:
         """
-        Normalize filename by converting to lowercase, removing special characters and replacing spaces.
+        Normalize filename by converting to lowercase, removing special characters (including hyphens) and replacing spaces.
         
         Args:
             text: Input text to normalize
             
         Returns:
-            Normalized filename safe for filesystem (lowercase)
+            Normalized filename safe for filesystem (lowercase, no special chars)
         """
         # Convert to lowercase
         text = text.lower()
@@ -85,8 +85,9 @@ class MusicVideoOrganizer:
         text = unicodedata.normalize('NFKD', text)
         text = ''.join([c for c in text if not unicodedata.combining(c)])
         
-        # Remove special characters except alphanumeric, spaces, hyphens, and underscores
-        text = re.sub(r'[^\w\s\-]', '', text)
+        # Remove special characters except alphanumeric, spaces, and underscores
+        # Note: hyphens are now removed as well
+        text = re.sub(r'[^\w\s]', '', text)
         
         # Replace spaces with underscores
         text = text.replace(' ', '_')
@@ -319,6 +320,20 @@ class MusicVideoOrganizer:
         
         return root
     
+    def create_artist_nfo(self, artist_name: str, artist_nfo_path: Path) -> None:
+        """Create artist.nfo file if it doesn't exist."""
+        if artist_nfo_path.exists():
+            return
+        
+        # Create artist NFO
+        root = ET.Element('artist')
+        name_elem = ET.SubElement(root, 'name')
+        name_elem.text = artist_name
+        
+        # Write with pretty printing
+        self.write_nfo(artist_nfo_path, root)
+        print(f"  {Colors.GREEN}Created artist.nfo{Colors.ENDC}")
+    
     def process_video(self, row: Dict[str, str], row_num: int) -> None:
         """
         Process a single video from CSV row.
@@ -342,11 +357,12 @@ class MusicVideoOrganizer:
         artist_dir = self.normalize_filename(artist)
         title_file = self.normalize_filename(title)
         
-        video_dir = self.output_dir / artist_dir
-        video_dir.mkdir(parents=True, exist_ok=True)
+        artist_dir_path = self.output_dir / artist_dir
+        artist_dir_path.mkdir(parents=True, exist_ok=True)
         
-        video_path = video_dir / f"{title_file}.mp4"
-        nfo_path = video_dir / f"{title_file}.nfo"
+        video_path = artist_dir_path / f"{title_file}.mp4"
+        nfo_path = artist_dir_path / f"{title_file}.nfo"
+        artist_nfo_path = artist_dir_path / "artist.nfo"
         
         # Check if video exists
         video_exists = video_path.exists()
@@ -369,6 +385,9 @@ class MusicVideoOrganizer:
                 
                 self.write_nfo(nfo_path, root)
                 self.stats['nfo_created'] += 1
+                
+                # Check and create artist.nfo if missing
+                self.create_artist_nfo(artist, artist_nfo_path)
             else:
                 # Check if we should redownload
                 youtube_url = row.get('youtube_url', '').strip()
@@ -420,6 +439,9 @@ class MusicVideoOrganizer:
             # Write NFO
             self.write_nfo(nfo_path, root)
             self.stats['nfo_created'] += 1
+            
+            # Create artist.nfo
+            self.create_artist_nfo(artist, artist_nfo_path)
             
             if download_success:
                 self.stats['downloaded'] += 1
