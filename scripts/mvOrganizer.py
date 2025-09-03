@@ -473,6 +473,9 @@ class MusicVideoOrganizer:
                 sniffer = csv.Sniffer()
                 delimiter = sniffer.sniff(sample).delimiter
                 
+                # Be kind, rewind
+                f.seek(0)
+                
                 reader = csv.DictReader(f, delimiter=delimiter)
                 
                 # Normalize field names (handle variations)
