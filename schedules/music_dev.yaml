@@ -115,6 +115,7 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
+        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
@@ -122,30 +123,36 @@ sequence:
       - duration: "27 minutes"
         content: "MV_80S_METAL"
         custom_title: "Thunder & Chrome"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # ad break
       - count: 1
         content: "AD_80S_BEER"
+        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_CARS"
+        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
         name: "PartnerNet Live from Mill-D"
       - duration: "27 minutes"
         content: "MV_80S_METAL"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # trailer break
       - count: 2
         content: "TR_80S"
+        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads
+      # fill remainder with ads. trim as necessary to fit
       - pad_to_next: 30
         content: "AD_80S_FILLER"
         discard_attempts: 5
+        trim: true
         filler_kind: "postroll"
       - epg_group: false
 
@@ -157,6 +164,7 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
+        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
@@ -164,30 +172,36 @@ sequence:
       - duration: "27 minutes"
         content: "MV_80S_ROCK"
         custom_title: "Signal Overdrive"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # ad break
       - count: 1
         content: "AD_80S_SODA"
+        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_ELECTRONICS"
+        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
         name: "PartnerNet Live from Mill-D"
       - duration: "27 minutes"
         content: "MV_80S_ROCK"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # trailer break
       - count: 2
         content: "TR_80S"
+        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads
+      # fill remainder with ads. trim as necessary to fit
       - pad_to_next: 30
         content: "AD_80S_FILLER"
         discard_attempts: 5
+        trim: true
         filler_kind: "postroll"
       - epg_group: false
 
@@ -199,6 +213,7 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
+        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
@@ -206,30 +221,36 @@ sequence:
       - duration: "27 minutes"
         content: "MV_80S_POP"
         custom_title: "Neon Pulse"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # ad break
       - count: 1
         content: "AD_80S_JINGLES"
+        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_RESTAURANTS"
+        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
         name: "PartnerNet Live from Mill-D"
       - duration: "27 minutes"
         content: "MV_80S_POP"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # trailer break
       - count: 2
         content: "TR_80S"
+        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads
+      # fill remainder with ads. trim as necessary to fit
       - pad_to_next: 30
         content: "AD_80S_FILLER"
         discard_attempts: 5
+        trim: true
         filler_kind: "postroll"
       - epg_group: false
 
@@ -241,6 +262,7 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
+        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
@@ -248,30 +270,36 @@ sequence:
       - duration: "27 minutes"
         content: "MV_80S_HIPHOP"
         custom_title: "Street Syntax"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # ad break
       - count: 1
-        content: "AD_80S_RESTAURANTS"
+        content: "AD_80S_JINGLES"
+        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_CARS"
+        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
         name: "PartnerNet Live from Mill-D"
       - duration: "27 minutes"
         content: "MV_80S_HIPHOP"
-        discard_attempts: 3
+        discard_attempts: 5
+        stop_before_end: false
       - watermark: false
       # trailer break
       - count: 2
         content: "TR_80S"
+        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads
+      # fill remainder with ads. trim as necessary to fit
       - pad_to_next: 30
         content: "AD_80S_FILLER"
         discard_attempts: 5
+        trim: true
         filler_kind: "postroll"
       - epg_group: false
 
