@@ -105,6 +105,11 @@ content:
     query: "type:other_video AND tag:bumpers AND tag:liquidmtv"
     order: shuffle
 
+  - search:
+    key: "AD_ASOT_FILLER"
+    query: "type:other_video AND tag:bumpers AND tag:asot"
+    order: shuffle
+
 sequence:
   # 80s
   ## Thunder & Chrome
@@ -115,11 +120,10 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
-        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_METAL"
         custom_title: "Thunder & Chrome"
@@ -129,15 +133,13 @@ sequence:
       # ad break
       - count: 1
         content: "AD_80S_BEER"
-        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_CARS"
-        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_METAL"
         discard_attempts: 5
@@ -146,13 +148,12 @@ sequence:
       # trailer break
       - count: 2
         content: "TR_80S"
-        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads. trim as necessary to fit
+      # fill remainder with ads, then our custom bumper
       - pad_to_next: 30
         content: "AD_80S_FILLER"
-        discard_attempts: 5
-        trim: true
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
         filler_kind: "postroll"
       - epg_group: false
 
@@ -164,11 +165,10 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
-        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_ROCK"
         custom_title: "Signal Overdrive"
@@ -177,16 +177,14 @@ sequence:
       - watermark: false
       # ad break
       - count: 1
-        content: "AD_80S_SODA"
-        stop_before_end: false
+        content: "AD_80S_ELECTRONICS"
         filler_kind: "midroll"
       - count: 1
-        content: "AD_80S_ELECTRONICS"
-        stop_before_end: false
+        content: "AD_80S_JINGLES"
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_ROCK"
         discard_attempts: 5
@@ -195,13 +193,12 @@ sequence:
       # trailer break
       - count: 2
         content: "TR_80S"
-        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads. trim as necessary to fit
+      # fill remainder with ads, then our custom bumper
       - pad_to_next: 30
         content: "AD_80S_FILLER"
-        discard_attempts: 5
-        trim: true
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
         filler_kind: "postroll"
       - epg_group: false
 
@@ -213,11 +210,10 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
-        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_POP"
         custom_title: "Neon Pulse"
@@ -227,15 +223,13 @@ sequence:
       # ad break
       - count: 1
         content: "AD_80S_JINGLES"
-        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_RESTAURANTS"
-        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_POP"
         discard_attempts: 5
@@ -244,13 +238,12 @@ sequence:
       # trailer break
       - count: 2
         content: "TR_80S"
-        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads. trim as necessary to fit
+      # fill remainder with ads, then our custom bumper
       - pad_to_next: 30
         content: "AD_80S_FILLER"
-        discard_attempts: 5
-        trim: true
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
         filler_kind: "postroll"
       - epg_group: false
 
@@ -262,11 +255,10 @@ sequence:
       # bumper
       - count: 1
         content: "BP_LIQUIDMTV"
-        stop_before_end: false
         filler_kind: "preroll"
       # MV block 1
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_HIPHOP"
         custom_title: "Street Syntax"
@@ -276,15 +268,13 @@ sequence:
       # ad break
       - count: 1
         content: "AD_80S_JINGLES"
-        stop_before_end: false
         filler_kind: "midroll"
       - count: 1
         content: "AD_80S_CARS"
-        stop_before_end: false
         filler_kind: "midroll"
       # MV block 2
       - watermark: true
-        name: "PartnerNet Live from Mill-D"
+        name: "asot.tv Music logo"
       - duration: "27 minutes"
         content: "MV_80S_HIPHOP"
         discard_attempts: 5
@@ -293,13 +283,181 @@ sequence:
       # trailer break
       - count: 2
         content: "TR_80S"
-        stop_before_end: false
         filler_kind: "postroll"
-      # fill remainder with ads. trim as necessary to fit
+      # fill remainder with ads, then our custom bumper
       - pad_to_next: 30
         content: "AD_80S_FILLER"
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  # 90s
+  ## Amp'd & Anarchy
+  - key: "SQ_AMPD_ANARCHY"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_METAL"
+        custom_title: "Amp'd & Anarchy"
         discard_attempts: 5
-        trim: true
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_METAL"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # trailer break
+      - count: 2
+        content: "TR_90S"
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 30
+        content: "AD_90S"
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Static Revival
+  - key: "SQ_STATIC_REVIVAL"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_ROCK"
+        custom_title: "Static Revival"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_ROCK"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # trailer break
+      - count: 2
+        content: "TR_90S"
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 30
+        content: "AD_90S"
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Bubblewrapped Gold
+  - key: "SQ_BUBBLEWRAPPED_GOLD"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_POP"
+        custom_title: "Bubblewrapped Gold"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_POP"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # trailer break
+      - count: 2
+        content: "TR_90S"
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 30
+        content: "AD_90S"
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Boombox Doctrine
+  - key: "SQ_BOOMBOX_DOCTRINE"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_HIPHOP"
+        custom_title: "Amp'd & Anarchy"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "27 minutes"
+        content: "MV_90S_HIPHOP"
+        discard_attempts: 5
+        stop_before_end: false
+      - watermark: false
+      # trailer break
+      - count: 2
+        content: "TR_90S"
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 30
+        content: "AD_90S"
+        discard_attempts: 2
+        fallback: "AD_ASOT_FILLER"
         filler_kind: "postroll"
       - epg_group: false
 
@@ -308,4 +466,8 @@ playout:
   - sequence: "SQ_SIGNAL_OVERDRIVE"
   - sequence: "SQ_NEON_PULSE"
   - sequence: "SQ_STREET_SYNTAX"
+  - sequence: "SQ_AMPD_ANARCHY"
+  - sequence: "SQ_STATIC_REVIVAL"
+  - sequence: "SQ_BUBBLEWRAPPED_GOLD"
+  - sequence: "SQ_BOOMBOX_DOCTRINE"
   - repeat: true
