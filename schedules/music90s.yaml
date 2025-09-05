@@ -1,0 +1,234 @@
+content:
+    
+  # 90s 
+  ## Music Videos
+  - search:
+    key: "MV_90S_POP"
+    query: "type:music_video AND tag:90s AND genre:Pop"
+    order: shuffle
+
+  - search:
+    key: "MV_90S_HIPHOP"
+    query: "type:music_video AND tag:90s AND genre:\"Hip Hop/R&B\""
+    order: shuffle
+
+  - search:
+    key: "MV_90S_METAL"
+    query: "type:music_video AND tag:90s AND genre:Metal"
+    order: shuffle
+
+  - search:
+    key: "MV_90S_ROCK"
+    query: "type:music_video AND tag:90s AND genre:Rock"
+    order: shuffle
+
+  ## Commercials
+  - search:
+    key: "AD_90S"
+    query: "type:other_video AND tag:commercials AND tag:90s"
+    order: shuffle
+
+  ## Movie Trailers
+  - search:
+    key: "TR_90S"
+    query: "type:other_video AND tag:trailers AND tag:90s"
+    order: shuffle
+
+  # Misc
+  ## Bumpers, filler
+  - search:
+    key: "BP_LIQUIDMTV"
+    query: "type:other_video AND tag:bumpers AND tag:liquidmtv"
+    order: shuffle
+
+  - search:
+    key: "AD_ASOT_FILLER"
+    query: "type:other_video AND tag:bumpers AND tag:asot"
+    order: shuffle
+
+sequence:
+
+  # 90s
+  ## Amp'd & Anarchy
+  - key: "SQ_AMPD_ANARCHY"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_METAL"
+        custom_title: "Amp'd & Anarchy"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_METAL"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_90S"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_90S"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Static Revival
+  - key: "SQ_STATIC_REVIVAL"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_ROCK"
+        custom_title: "Static Revival"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_ROCK"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_90S"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_90S"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Bubblewrapped Gold
+  - key: "SQ_BUBBLEWRAPPED_GOLD"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_POP"
+        custom_title: "Bubblewrapped Gold"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_POP"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_90S"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_90S"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Boombox Doctrine
+  - key: "SQ_BOOMBOX_DOCTRINE"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_HIPHOP"
+        custom_title: "Amp'd & Anarchy"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_90S"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_90S_HIPHOP"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_90S"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_90S"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+
+playout:
+  - sequence: "SQ_AMPD_ANARCHY"
+  - sequence: "SQ_STATIC_REVIVAL"
+  - sequence: "SQ_BUBBLEWRAPPED_GOLD"
+  - sequence: "SQ_BOOMBOX_DOCTRINE"
+  - repeat: true
