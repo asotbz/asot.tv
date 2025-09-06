@@ -22,6 +22,12 @@ content:
     query: "type:music_video AND tag:90s AND genre:Rock"
     order: shuffle
 
+  ## Special Music Video Categories
+  - search:
+    key: "MV_90S_GOLDEN_HIPHOP"
+    query: "type:music_video AND (release_date:1985* OR release_date:1986* OR release_date:1987* OR release_date:1988* OR release_date:1989* OR release_date:199*) AND genre:\"Hip Hop/R&B\""
+    order: shuffle
+
   ## Commercials
   - search:
     key: "AD_90S"
@@ -194,8 +200,8 @@ sequence:
       - watermark: true
         name: "asot.tv Music logo"
       - duration: "22 minutes"
-        content: "MV_90S_HIPHOP"
-        custom_title: "Amp'd & Anarchy"
+        content: "MV_90S_GOLDEN_HIPHOP"
+        custom_title: "Boombox Doctrine"
         discard_attempts: 2
         stop_before_end: false
       - watermark: false
@@ -207,7 +213,7 @@ sequence:
       - watermark: true
         name: "asot.tv Music logo"
       - duration: "22 minutes"
-        content: "MV_90S_HIPHOP"
+        content: "MV_90S_GOLDEN_HIPHOP"
         discard_attempts: 2
         stop_before_end: false
       - watermark: false
