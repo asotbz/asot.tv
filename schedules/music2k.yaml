@@ -1,0 +1,240 @@
+content:
+  
+  # Beyond 2000 
+  ## Music Videos
+  - search:
+    key: "MV_2K_POP"
+    query: "type:music_video AND release_date:20* AND genre:Pop"
+    order: shuffle
+
+  - search:
+    key: "MV_2K_HIPHOP"
+    query: "type:music_video AND release_date:20* AND genre:\"Hip Hop/R&B\""
+    order: shuffle
+
+  - search:
+    key: "MV_2K_METAL"
+    query: "type:music_video AND release_date:20* AND genre:Metal"
+    order: shuffle
+
+  - search:
+    key: "MV_2K_ROCK"
+    query: "type:music_video AND release_date:20* AND genre:Rock"
+    order: shuffle
+  
+  ## Special Music Video Categories
+  - search:
+    key: "MV_2K_SILVER_HIPHOP"
+    query: "type:music_video AND (release_date:1998* OR release_date:1999* OR release_date:200*) AND genre:\"Hip Hop/R&B\""
+    order: shuffle
+
+  ## Commercials
+  - search:
+    key: "AD_2K"
+    query: "type:other_video AND tag:commercials AND tag:00s"
+    order: shuffle
+
+  ## Movie Trailers
+  - search:
+    key: "TR_2K"
+    query: "type:other_video AND tag:trailers AND tag:00s"
+    order: shuffle
+  
+  # Misc
+  ## Bumpers, filler
+  - search:
+    key: "BP_LIQUIDMTV"
+    query: "type:other_video AND tag:bumpers AND tag:liquidmtv"
+    order: shuffle
+
+  - search:
+    key: "AD_ASOT_FILLER"
+    query: "type:other_video AND tag:bumpers AND tag:asot"
+    order: shuffle
+
+sequence:
+
+  # Beyond 2000
+  ## Nu Metal Universe
+  - key: "SQ_NUMETAL_UNIVERSE"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_METAL"
+        custom_title: "Nu Metal Universe"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_2K"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_METAL"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_2K"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_2K"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Electric Landscape
+  - key: "SQ_ELECTRIC_LANDSCAPE"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_ROCK"
+        custom_title: "Electric Landscape"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_2K"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_ROCK"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_2K"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_2K"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Pop Mosaic
+  - key: "SQ_POP_MOSAIC"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_POP"
+        custom_title: "Pop Mosaic"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_2K"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_POP"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_2K"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_2K"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+  ## Silver Cipher
+  - key: "SQ_SILVER_CIPHER"
+    items:
+      - epg_group: true
+      - watermark: false
+      # bumper
+      - count: 1
+        content: "BP_LIQUIDMTV"
+        filler_kind: "preroll"
+      # MV block 1
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_SILVER_HIPHOP"
+        custom_title: "Silver Cipher"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+      # ad break
+      - count: 2
+        content: "AD_2K"
+        filler_kind: "midroll"
+      # MV block 2
+      - watermark: true
+        name: "asot.tv Music logo"
+      - duration: "22 minutes"
+        content: "MV_2K_SILVER_HIPHOP"
+        discard_attempts: 2
+        stop_before_end: false
+      - watermark: false
+     # trailer break
+      - duration: "2 minutes"
+        content: "TR_2K"
+        discard_attempts: 2
+        stop_before_end: false
+        filler_kind: "postroll"
+      # fill remainder with ads, then our custom bumper
+      - pad_to_next: 60
+        content: "AD_2K"
+        discard_attempts: 10
+        fallback: "AD_ASOT_FILLER"
+        filler_kind: "postroll"
+      - epg_group: false
+
+
+playout:
+  - sequence: "SQ_NUMETAL_UNIVERSE"
+  - sequence: "SQ_ELECTRIC_LANDSCAPE"
+  - sequence: "SQ_POP_MOSAIC"
+  - sequence: "SQ_SILVER_CIPHER"
+  - repeat: true
