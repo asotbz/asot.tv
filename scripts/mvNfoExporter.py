@@ -187,7 +187,10 @@ class NfoExporter:
     
     def write_csv(self, data_list: List[Dict[str, str]]) -> None:
         """
-        Write data to CSV file.
+        Write data to CSV file with proper escaping for fields containing commas.
+        
+        The csv.DictWriter automatically handles quoting fields that contain
+        special characters like commas, quotes, or newlines.
         
         Args:
             data_list: List of dictionaries containing NFO data
@@ -196,7 +199,16 @@ class NfoExporter:
         
         try:
             with open(self.output_file, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.CSV_FIELDS)
+                # Configure the writer with QUOTE_MINIMAL to quote fields only when necessary
+                # This ensures fields with commas, quotes, or newlines are properly quoted
+                writer = csv.DictWriter(
+                    csvfile,
+                    fieldnames=self.CSV_FIELDS,
+                    quoting=csv.QUOTE_MINIMAL,
+                    quotechar='"',
+                    escapechar=None,
+                    doublequote=True  # Use double quotes to escape quotes within fields
+                )
                 writer.writeheader()
                 writer.writerows(data_list)
             

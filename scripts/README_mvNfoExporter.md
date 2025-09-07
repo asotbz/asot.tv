@@ -11,6 +11,7 @@ Export music video metadata from NFO files to CSV format, creating a master list
 - **Recursive NFO Discovery**: Finds all `.nfo` files (except `artist.nfo`) in the directory tree
 - **Smart URL Selection**: Identifies the most recent successful download URL (excludes failed attempts)
 - **Complete Metadata Export**: Exports all PRD-defined fields to CSV
+- **Proper CSV Escaping**: Automatically quotes fields containing commas, quotes, or newlines
 - **Progress Tracking**: Shows progress for large collections
 - **Error Handling**: Gracefully handles malformed NFO files
 - **Sorted Output**: CSV is sorted by artist and title for easy browsing
@@ -43,6 +44,14 @@ The exported CSV includes these fields (in order):
 - `director` - Video director
 - `tag` - Custom tags (comma-separated if multiple `<tag>` elements exist)
 - `youtube_url` - Most recent successful YouTube URL
+
+### CSV Escaping
+
+The exporter properly handles special characters in CSV fields:
+- **Commas in fields**: Automatically quoted (e.g., `"Rock, Pop"`)
+- **Quotes in fields**: Escaped with double-quotes (e.g., `"She said ""Hello"""`)
+- **Multi-line content**: Preserved and properly quoted
+- **Empty fields**: Represented as empty strings (no quotes needed)
 
 ## Field Mapping
 
@@ -124,7 +133,10 @@ year,artist,title,album,label,genre,director,tag,youtube_url
 1984,Duran Duran,Wild Boys,Arena,EMI,New Wave,Russell Mulcahy,"80s, classic, new wave",https://youtube.com/watch?v=M43wsiNBwmo
 2007,Justice,D.A.N.C.E.,Cross,Ed Banger,Electronic,So Me,"french house, electronic",https://youtube.com/watch?v=sy1dYFGkPUE
 1982,Michael Jackson,Thriller,Thriller,Epic,Pop,John Landis,"zombie, classic, halloween",https://youtube.com/watch?v=sOnqjkJTMaA
+1985,"Tears for Fears","Shout","Songs from the Big Chair","Mercury","New Wave, Pop","Nigel Dick","80s, anthem",https://youtube.com/watch?v=example
 ```
+
+Note how fields containing commas (like genres "New Wave, Pop") are automatically quoted to ensure proper CSV parsing.
 
 ## Integration with mvOrganizer Workflow
 
@@ -184,3 +196,17 @@ The script handles various error conditions:
    - Filter by missing metadata
    - Create pivot tables for statistics
 4. **Backup Strategy**: Include CSV exports with your video backups
+5. **CSV Compatibility**: The RFC 4180-compliant output works with all major spreadsheet applications
+
+## Technical Details
+
+### CSV Writing Configuration
+
+The CSV writer uses Python's standard `csv` module with these settings:
+- **Quoting**: `QUOTE_MINIMAL` - only quotes fields when necessary
+- **Quote Character**: Standard double quotes (`"`)
+- **Escape Method**: Double-quote escaping (RFC 4180 compliant)
+- **Encoding**: UTF-8 with full Unicode support
+- **Line Terminator**: Platform-appropriate (CRLF on Windows, LF on Unix)
+
+This ensures maximum compatibility with spreadsheet applications like Excel, Google Sheets, and LibreOffice Calc.
