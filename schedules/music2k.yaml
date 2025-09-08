@@ -75,13 +75,11 @@ sequence:
       - duration: "50 minutes"
         content: "MV_2K_METAL"
         custom_title: "Nu Metal Universe"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
      # trailer break
       - duration: "2 minutes"
         content: "TR_2K"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -107,13 +105,11 @@ sequence:
       - duration: "50 minutes"
         content: "MV_2K_ROCK"
         custom_title: "Electric Landscape"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
      # trailer break
       - duration: "2 minutes"
         content: "TR_2K"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -139,13 +135,11 @@ sequence:
       - duration: "50 minutes"
         content: "MV_2K_POP"
         custom_title: "Pop Mosaic"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
      # trailer break
       - duration: "2 minutes"
         content: "TR_2K"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -171,13 +165,11 @@ sequence:
       - duration: "50 minutes"
         content: "MV_2K_SILVER_HIPHOP"
         custom_title: "Silver Cipher"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
      # trailer break
       - duration: "2 minutes"
         content: "TR_2K"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
