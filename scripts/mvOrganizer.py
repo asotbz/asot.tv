@@ -209,7 +209,7 @@ class MusicVideoOrganizer:
         # Add force-overwrite flag when replacing existing videos
         if force_overwrite:
             cmd.append('--force-overwrites')
-            print(f"  {Colors.YELLOW}Force overwriting existing file{Colors.ENDC}")
+            print(f"  {Colors.WARNING}Force overwriting existing file{Colors.ENDC}")
 
         if self.cookies:
             cmd.extend(['--cookies', self.cookies])
