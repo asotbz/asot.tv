@@ -49,6 +49,7 @@ python mvOrganizer.py input.csv -o /path/to/output
 | `csv_file` | Path to CSV file containing music video metadata (required) |
 | `-o, --output-dir` | Base output directory for organized videos (required) |
 | `--overwrite` | Re-download existing videos from new URLs |
+| `--force-download` | Force download videos, ignoring previous sources and replacing existing files |
 | `--no-search` | Disable YouTube search fallback |
 | `--cookies` | Cookie file for YouTube authentication |
 
@@ -60,6 +61,9 @@ python mvOrganizer.py videos.csv -o /media/MusicVideos
 
 # Force re-download with new URLs
 python mvOrganizer.py videos.csv -o ./output --overwrite
+
+# Force download all videos, replacing existing files
+python mvOrganizer.py videos.csv -o ./output --force-download
 
 # Disable search fallback and use cookies for auth
 python mvOrganizer.py videos.csv -o ./output --no-search --cookies cookies.txt
@@ -157,10 +161,20 @@ Generated NFO files follow Kodi's musicvideo specification:
 
 ### Existing Videos (File Exists)
 
-1. **NFO Check**: Creates NFO if missing
-2. **URL Comparison**: Checks if CSV URL is already in sources
-3. **Overwrite Mode**: Downloads from new URL if `--overwrite` flag is set
-4. **Skip**: Skips download if URL exists in sources or overwrite is disabled
+1. **Normal Mode**:
+   - Creates NFO if missing
+   - Skips download if video exists
+
+2. **Overwrite Mode** (`--overwrite`):
+   - Checks if CSV URL is already in sources
+   - Downloads from new URL if not in sources
+   - Skips if URL already tried
+
+3. **Force Download Mode** (`--force-download`):
+   - Ignores all previous sources
+   - Always attempts download from provided URL
+   - Replaces existing video file
+   - Falls back to search if no URL provided
 
 ## Error Handling
 

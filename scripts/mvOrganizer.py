@@ -37,12 +37,14 @@ class Colors:
 class MusicVideoOrganizer:
     """Main class for organizing music videos from CSV input."""
     
-    def __init__(self, output_dir: str, overwrite: bool = False, 
-                 no_search: bool = False, cookies: Optional[str] = None):
+    def __init__(self, output_dir: str, overwrite: bool = False,
+                 no_search: bool = False, cookies: Optional[str] = None,
+                 force_download: bool = False):
         self.output_dir = Path(output_dir)
         self.overwrite = overwrite
         self.no_search = no_search
         self.cookies = cookies
+        self.force_download = force_download
         self.stats = {
             'processed': 0,
             'downloaded': 0,
@@ -173,13 +175,14 @@ class MusicVideoOrganizer:
             
         return None
     
-    def download_video(self, url: str, output_path: Path) -> bool:
+    def download_video(self, url: str, output_path: Path, force_overwrite: bool = False) -> bool:
         """
         Download video from YouTube URL.
         
         Args:
             url: YouTube URL
             output_path: Output file path
+            force_overwrite: Whether to force overwrite existing files
             
         Returns:
             True if successful, False otherwise
@@ -202,6 +205,11 @@ class MusicVideoOrganizer:
             '--no-warnings',
             '--progress'
         ]
+
+        # Add force-overwrite flag when replacing existing videos
+        if force_overwrite:
+            cmd.append('--force-overwrites')
+            print(f"  {Colors.YELLOW}Force overwriting existing file{Colors.ENDC}")
 
         if self.cookies:
             cmd.extend(['--cookies', self.cookies])
@@ -371,7 +379,59 @@ class MusicVideoOrganizer:
         # Handle existing NFO
         existing_root = self.read_existing_nfo(nfo_path)
         
-        if video_exists:
+        # Check if force download is enabled
+        if self.force_download:
+            print(f"  {Colors.WARNING}Force download enabled - ignoring existing sources{Colors.ENDC}")
+            
+            # Get URL from CSV
+            youtube_url = row.get('youtube_url', '').strip()
+            download_success = False
+            
+            # Use existing NFO or create new one
+            if existing_root is not None:
+                root = existing_root
+                existing_sources = self.get_existing_sources(root)
+            else:
+                root = self.create_nfo_from_csv(row)
+                existing_sources = []
+            
+            # Try provided URL first
+            if youtube_url and self.is_valid_youtube_url(youtube_url):
+                print(f"  {Colors.BLUE}Force downloading from provided URL{Colors.ENDC}")
+                download_success = self.download_video(youtube_url, video_path, force_overwrite=True)
+                
+                # Only add source if not already in NFO (avoid duplicates)
+                if youtube_url not in existing_sources:
+                    self.add_source_to_nfo(root, youtube_url, failed=not download_success, search=False)
+            
+            # Try search if needed and no URL provided
+            if not download_success and not youtube_url and not self.no_search:
+                search_url = self.search_youtube(artist, title)
+                if search_url:
+                    print(f"  {Colors.BLUE}Force downloading from search result{Colors.ENDC}")
+                    download_success = self.download_video(search_url, video_path, force_overwrite=True)
+                    
+                    # Only add source if not already in NFO
+                    if search_url not in existing_sources:
+                        self.add_source_to_nfo(root, search_url,
+                                             failed=not download_success, search=True)
+            
+            # Write NFO
+            self.write_nfo(nfo_path, root)
+            if existing_root is None:
+                self.stats['nfo_created'] += 1
+            
+            # Create artist.nfo
+            self.create_artist_nfo(artist, artist_nfo_path)
+            
+            if download_success:
+                self.stats['downloaded'] += 1
+                print(f"  {Colors.GREEN}✓ Video downloaded successfully (force){Colors.ENDC}")
+            else:
+                self.stats['failed'] += 1
+                print(f"  {Colors.FAIL}✗ Failed to download video (force){Colors.ENDC}")
+                
+        elif video_exists:
             print(f"  {Colors.CYAN}Video already exists{Colors.ENDC}")
 
             # Check and create artist.nfo if missing
@@ -399,9 +459,9 @@ class MusicVideoOrganizer:
                     if youtube_url not in existing_sources and self.overwrite:
                         print(f"  {Colors.BLUE}Attempting redownload from new URL{Colors.ENDC}")
                         
-                        # Try download
-                        success = self.download_video(youtube_url, video_path)
-                        self.add_source_to_nfo(existing_root, youtube_url, 
+                        # Try download with force overwrite since we're replacing existing video
+                        success = self.download_video(youtube_url, video_path, force_overwrite=True)
+                        self.add_source_to_nfo(existing_root, youtube_url,
                                              failed=not success, search=False)
                         self.write_nfo(nfo_path, existing_root)
                         
@@ -556,6 +616,12 @@ Examples:
     )
     
     parser.add_argument(
+        '--force-download',
+        action='store_true',
+        help='Force download videos, ignoring previous sources and replacing existing files'
+    )
+    
+    parser.add_argument(
         '--no-search',
         action='store_true',
         help='Disable YouTube search fallback'
@@ -573,7 +639,8 @@ Examples:
         output_dir=args.output_dir,
         overwrite=args.overwrite,
         no_search=args.no_search,
-        cookies=args.cookies
+        cookies=args.cookies,
+        force_download=args.force_download
     )
     
     # Check dependencies
