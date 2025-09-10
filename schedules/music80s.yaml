@@ -88,34 +88,17 @@ sequence:
       - count: 1
         content: "BP_LIQUIDMTV"
         filler_kind: "preroll"
-      # MV block 1
+      # MV block
       - watermark: true
         name: "asot.tv Music logo"
-      - duration: "22 minutes"
+      - duration: "50 minutes"
         content: "MV_80S_METAL"
         custom_title: "Thunder & Chrome"
-        discard_attempts: 2
-        stop_before_end: false
-      - watermark: false
-      # ad break
-      - count: 1
-        content: "AD_80S_BEER"
-        filler_kind: "midroll"
-      - count: 1
-        content: "AD_80S_CARS"
-        filler_kind: "midroll"
-      # MV block 2
-      - watermark: true
-        name: "asot.tv Music logo"
-      - duration: "22 minutes"
-        content: "MV_80S_METAL"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
       # trailer break
       - duration: "2 minutes"
         content: "TR_80S"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -135,34 +118,17 @@ sequence:
       - count: 1
         content: "BP_LIQUIDMTV"
         filler_kind: "preroll"
-      # MV block 1
+      # MV block
       - watermark: true
         name: "asot.tv Music logo"
-      - duration: "22 minutes"
+      - duration: "50 minutes"
         content: "MV_80S_ROCK"
         custom_title: "Signal Overdrive"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
-      # ad break
-      - count: 1
-        content: "AD_80S_ELECTRONICS"
-        filler_kind: "midroll"
-      - count: 1
-        content: "AD_80S_JINGLES"
-        filler_kind: "midroll"
-      # MV block 2
-      - watermark: true
-        name: "asot.tv Music logo"
-      - duration: "22 minutes"
-        content: "MV_80S_ROCK"
-        discard_attempts: 2
-        stop_before_end: false
-      - watermark: false
-     # trailer break
+      # trailer break
       - duration: "2 minutes"
         content: "TR_80S"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -182,34 +148,17 @@ sequence:
       - count: 1
         content: "BP_LIQUIDMTV"
         filler_kind: "preroll"
-      # MV block 1
+      # MV block
       - watermark: true
         name: "asot.tv Music logo"
-      - duration: "22 minutes"
+      - duration: "50 minutes"
         content: "MV_80S_POP"
         custom_title: "Neon Pulse"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
-      # ad break
-      - count: 1
-        content: "AD_80S_JINGLES"
-        filler_kind: "midroll"
-      - count: 1
-        content: "AD_80S_RESTAURANTS"
-        filler_kind: "midroll"
-      # MV block 2
-      - watermark: true
-        name: "asot.tv Music logo"
-      - duration: "22 minutes"
-        content: "MV_80S_POP"
-        discard_attempts: 2
-        stop_before_end: false
-      - watermark: false
-     # trailer break
+      # trailer break
       - duration: "2 minutes"
         content: "TR_80S"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper
@@ -229,34 +178,17 @@ sequence:
       - count: 1
         content: "BP_LIQUIDMTV"
         filler_kind: "preroll"
-      # MV block 1
+      # MV block
       - watermark: true
         name: "asot.tv Music logo"
-      - duration: "22 minutes"
+      - duration: "50 minutes"
         content: "MV_80S_HIPHOP"
         custom_title: "Street Syntax"
-        discard_attempts: 2
         stop_before_end: false
       - watermark: false
-      # ad break
-      - count: 1
-        content: "AD_80S_JINGLES"
-        filler_kind: "midroll"
-      - count: 1
-        content: "AD_80S_CARS"
-        filler_kind: "midroll"
-      # MV block 2
-      - watermark: true
-        name: "asot.tv Music logo"
-      - duration: "22 minutes"
-        content: "MV_80S_HIPHOP"
-        discard_attempts: 2
-        stop_before_end: false
-      - watermark: false
-     # trailer break
+      # trailer break
       - duration: "2 minutes"
         content: "TR_80S"
-        discard_attempts: 2
         stop_before_end: false
         filler_kind: "postroll"
       # fill remainder with ads, then our custom bumper

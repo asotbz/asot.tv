@@ -181,8 +181,8 @@ sequence:
       - epg_group: false
 
 playout:
-  - sequence: "SQ_NUMETAL_UNIVERSE"
-  - sequence: "SQ_ELECTRIC_LANDSCAPE"
   - sequence: "SQ_POP_MOSAIC"
   - sequence: "SQ_SILVER_CIPHER"
+  - sequence: "SQ_NUMETAL_UNIVERSE"
+  - sequence: "SQ_ELECTRIC_LANDSCAPE"
   - repeat: true
