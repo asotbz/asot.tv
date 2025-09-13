@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This roadmap outlines the development plan for the C# refactor of Video Jockey, transitioning from a Python/Node.js multi-container architecture to a unified .NET 8 single-container solution. The project is structured in 4 phases over approximately 12 weeks, prioritizing core functionality and self-hosted deployment simplicity.
+This roadmap outlines the development plan for Video Jockey built with C# and .NET 8 as a unified single-container solution. The project is structured in 4 phases over approximately 12 weeks, prioritizing core functionality and self-hosted deployment simplicity.
 
 ## Key Advantages of C# Refactor
 
@@ -14,11 +14,11 @@ This roadmap outlines the development plan for the C# refactor of Video Jockey, 
 - **Type Safety**: Strong typing throughout the stack
 
 ### Operational Benefits
-- **Resource Efficiency**: 50% less memory usage compared to Python/Node.js
-- **Faster Startup**: < 5 seconds vs 30+ seconds
+- **Resource Efficiency**: Optimized memory usage with .NET 8
+- **Fast Startup**: < 5 seconds with compiled application
 - **Simplified Hosting**: Single process, no orchestration needed
 - **Better Integration**: Native Windows service support
-- **Reduced Dependencies**: No Redis, no separate frontend build
+- **Reduced Dependencies**: No Redis, single integrated application
 
 ## Project Timeline Overview
 
@@ -26,7 +26,7 @@ This roadmap outlines the development plan for the C# refactor of Video Jockey, 
 Phase 1: Foundation (Weeks 1-3)      ██████
 Phase 2: Core Features (Weeks 4-6)   ██████
 Phase 3: Advanced (Weeks 7-9)        ██████
-Phase 4: Polish & Deploy (Weeks 10-12) ██████
+Phase 4: Testing & Deploy (Weeks 10-12) ██████
 ```
 
 ## Team Requirements (Reduced)
@@ -37,7 +37,7 @@ Phase 4: Polish & Deploy (Weeks 10-12) ██████
 - **DevOps Engineer** (0.25): Docker, deployment automation
 - **QA Engineer** (0.25): Testing, quality assurance
 
-### Total: 2 FTE (vs 4.5 FTE for Python/Node.js version)
+### Total: 2 FTE (optimized team structure)
 
 ---
 
@@ -62,14 +62,14 @@ dotnet sln add VideoJockey.Tests/VideoJockey.Tests.csproj
 
 # Add NuGet packages
 dotnet add VideoJockey.Web package MudBlazor
-dotnet add VideoJockey.Data package LiteDB
+dotnet add VideoJockey.Data package Microsoft.EntityFrameworkCore.Sqlite
 dotnet add VideoJockey.Web package Serilog.AspNetCore
 ```
 
 #### Core Components
 - [ ] Solution structure with clean architecture
 - [ ] Configure Blazor Server with MudBlazor UI
-- [ ] Set up LiteDB for embedded database
+- [ ] Set up SQLite with Entity Framework Core
 - [ ] Implement Serilog logging with file rotation
 - [ ] Configure dependency injection
 - [ ] Create base entity classes and interfaces
@@ -79,7 +79,7 @@ dotnet add VideoJockey.Web package Serilog.AspNetCore
 
 **Deliverables:**
 - Working Blazor application
-- LiteDB integration
+- SQLite database integration
 - Docker container building
 - Basic project structure
 
@@ -87,7 +87,7 @@ dotnet add VideoJockey.Web package Serilog.AspNetCore
 
 #### Identity Implementation
 - [ ] Implement simplified ASP.NET Core Identity
-- [ ] Create custom user store with LiteDB
+- [ ] Create custom user store with SQLite/EF Core
 - [ ] Build login/logout Blazor components
 - [ ] Implement cookie authentication
 - [ ] Add remember me functionality
@@ -126,7 +126,7 @@ dotnet add VideoJockey.Web package Serilog.AspNetCore
 - [ ] Create Video entity with all properties
 - [ ] Implement QueueItem entity
 - [ ] Create generic repository interface
-- [ ] Implement LiteDB repository
+- [ ] Implement EF Core repository with SQLite
 - [ ] Add unit of work pattern
 - [ ] Create data access layer tests
 - [ ] Implement query specifications
@@ -431,7 +431,7 @@ public class MetricsService
 
 ---
 
-## Phase 4: Polish, Testing & Deployment (Weeks 10-12)
+## Phase 4: Testing & Deployment (Weeks 10-12)
 
 ### Week 10: UI Polish & Mobile Optimization
 
@@ -527,7 +527,7 @@ public async Task CreateVideo_Should_Return_Video_With_Id()
 - [ ] Create video tutorials
 - [ ] Build FAQ section
 - [ ] Document configuration options
-- [ ] Create migration guide
+- [ ] Create deployment best practices
 
 #### Single Container Deployment
 ```yaml
@@ -564,93 +564,28 @@ services:
 
 ---
 
-## Migration Strategy from Python/Node.js
+## Performance Targets
 
-### Data Migration Process
+### Resource Usage Goals
 
-#### Step 1: Export Existing Data
-```python
-# Python export script
-import sqlite3
-import json
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Memory (Idle) | < 150MB | Efficient baseline memory usage |
+| Memory (Load) | < 400MB | Under heavy load conditions |
+| CPU (Idle) | 1-2% | Minimal background processing |
+| Startup Time | < 5s | Fast application startup |
+| Docker Image | < 200MB | Compact deployment package |
+| Dependencies | < 30 packages | Minimal external dependencies |
 
-def export_data():
-    conn = sqlite3.connect('videojockey.db')
-    cursor = conn.cursor()
-    
-    # Export videos
-    cursor.execute('SELECT * FROM videos')
-    videos = [dict(row) for row in cursor.fetchall()]
-    
-    with open('videos_export.json', 'w') as f:
-        json.dump(videos, f, default=str)
-```
+### Performance Metrics Goals
 
-#### Step 2: Import to C# Application
-```csharp
-// C# import service
-public class DataMigrationService
-{
-    public async Task ImportFromJsonAsync(string filePath)
-    {
-        var json = await File.ReadAllTextAsync(filePath);
-        var videos = JsonSerializer.Deserialize<List<VideoImport>>(json);
-        
-        foreach (var video in videos)
-        {
-            var entity = MapToEntity(video);
-            await _videoRepository.InsertAsync(entity);
-        }
-    }
-}
-```
-
-### Deployment Migration Path
-
-1. **Parallel Running** (Week 1)
-   - Deploy C# version alongside existing
-   - Sync data between systems
-   - Compare functionality
-
-2. **Gradual Migration** (Week 2)
-   - Route read traffic to new system
-   - Keep writes on old system
-   - Monitor performance
-
-3. **Full Cutover** (Week 3)
-   - Switch all traffic to C# version
-   - Keep old system as backup
-   - Monitor for issues
-
-4. **Decommission** (Week 4)
-   - Remove old containers
-   - Archive old codebase
-   - Document lessons learned
-
----
-
-## Performance Comparison
-
-### Resource Usage
-
-| Metric | Python/Node.js | C# (.NET 8) | Improvement |
-|--------|---------------|-------------|-------------|
-| Memory (Idle) | 800MB | 150MB | 81% reduction |
-| Memory (Load) | 1.5GB | 400MB | 73% reduction |
-| CPU (Idle) | 5-10% | 1-2% | 80% reduction |
-| Startup Time | 30s | 3s | 90% reduction |
-| Docker Image | 1.2GB | 180MB | 85% reduction |
-| Dependencies | 500+ packages | 20 packages | 96% reduction |
-
-### Performance Metrics
-
-| Operation | Python/Node.js | C# (.NET 8) | Improvement |
-|-----------|---------------|-------------|-------------|
-| API Response | 250ms | 50ms | 80% faster |
-| Page Load | 2s | 500ms | 75% faster |
-| Search Query | 500ms | 100ms | 80% faster |
-| File Upload (100MB) | 10s | 3s | 70% faster |
-| Concurrent Users | 50 | 200 | 4x capacity |
+| Operation | Target | Notes |
+|-----------|--------|-------|
+| API Response | < 100ms | Fast API responses |
+| Page Load | < 1s | Quick page rendering |
+| Search Query | < 200ms | Responsive search |
+| File Upload (100MB) | < 5s | Efficient file handling |
+| Concurrent Users | 100+ | Good scalability |
 
 ---
 
@@ -661,55 +596,40 @@ public class DataMigrationService
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | Blazor learning curve | Medium | Provide training, use templates |
-| LiteDB limitations | Low | Design for migration to SQL if needed |
+| SQLite scalability | Low | Design for migration to PostgreSQL if needed |
 | Single container failure | High | Implement proper backup/restore |
 | Memory leaks | Medium | Use proper disposal patterns |
 | SignalR scaling | Low | Implement backplane if needed |
-
-### Migration Risks
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Data loss during migration | High | Comprehensive backup strategy |
-| Feature parity gaps | Medium | Detailed feature comparison |
-| User adoption | Low | Maintain familiar UI |
-| Performance regression | Low | Extensive load testing |
 
 ---
 
 ## Budget Comparison
 
-### Development Costs (3 months)
+### Development Investment (3 months)
 
-**Python/Node.js Version:**
-- Backend Developer: $30,000
-- Frontend Developer: $30,000
-- Full Stack Developer: $30,000
-- DevOps (0.5): $15,000
-- **Total**: $105,000
-
-**C# Version:**
+**C# Implementation:**
 - Senior .NET Developer: $35,000
 - Mid .NET Developer (0.5): $12,500
 - DevOps (0.25): $7,500
-- **Total**: $55,000
+- **Total Investment**: $55,000
 
-**Savings: $50,000 (48% reduction)**
+This represents a lean, efficient development approach with:
+- Single technology stack reducing complexity
+- Smaller team due to unified development
+- Reduced DevOps overhead with single container architecture
 
 ### Operational Costs (Monthly)
 
-**Python/Node.js Version:**
-- Hosting (3 containers): $60
-- Redis: $20
-- Monitoring: $30
-- **Total**: $110/month
-
-**C# Version:**
+**C# Implementation:**
 - Hosting (1 container): $20
 - Monitoring: $10
 - **Total**: $30/month
 
-**Savings: $80/month (73% reduction)**
+Benefits of single container approach:
+- Minimal hosting requirements
+- No external dependencies (Redis, etc.)
+- Simplified monitoring and maintenance
+- Reduced operational overhead
 
 ---
 
@@ -743,12 +663,12 @@ public class DataMigrationService
 
 ## Conclusion
 
-The C# refactor of Video Jockey represents a significant improvement in:
+The Video Jockey C# implementation delivers:
 
-1. **Simplicity**: Single language, single container
-2. **Performance**: 80% reduction in resource usage
-3. **Cost**: 48% reduction in development, 73% in operations
-4. **Maintainability**: Unified tooling and debugging
-5. **Deployment**: Single container, zero external dependencies
+1. **Simplicity**: Single language, single container architecture
+2. **Performance**: Optimized resource usage and fast response times
+3. **Cost-Effectiveness**: Lean development team and minimal operational costs
+4. **Maintainability**: Unified tooling and debugging experience
+5. **Deployment**: Self-contained single container with database-driven configuration
 
-This roadmap provides a clear path to deliver a modern, efficient, and easily deployable music video management system that maintains all features while dramatically reducing complexity and resource requirements.
+This roadmap provides a clear path to deliver a modern, efficient, and easily deployable music video management system with enterprise-grade features while maintaining simplicity for self-hosted deployments.

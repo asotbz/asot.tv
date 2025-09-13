@@ -8,7 +8,7 @@ This guide provides a step-by-step approach to implementing Video Jockey using C
 
 ### Why This Stack?
 
-1. **Single Language**: C# throughout (no JavaScript/Python split)
+1. **Single Language**: C# throughout
 2. **Single Container**: Everything in one ~180MB Docker image
 3. **Zero Configuration**: All settings in database, managed via UI
 4. **Self-Contained**: No external services or environment variables required
@@ -722,31 +722,6 @@ app.MapGet("/metrics", async (VideoService videoService) =>
         StorageUsed = await storageService.GetUsedSpaceAsync()
     };
 }).RequireAuthorization();
-```
-
-## Migration from Python/Node.js
-
-### Data Migration Tool
-
-```csharp
-// Tools/MigrationTool/Program.cs
-public class MigrationTool
-{
-    public async Task MigrateAsync(string oldDbPath, string newDbPath)
-    {
-        // 1. Export from old SQLite
-        var oldData = await ExportOldDataAsync(oldDbPath);
-        
-        // 2. Transform to new schema
-        var transformed = TransformData(oldData);
-        
-        // 3. Import to new database
-        await ImportToNewDbAsync(transformed, newDbPath);
-        
-        // 4. Verify integrity
-        await VerifyMigrationAsync(oldDbPath, newDbPath);
-    }
-}
 ```
 
 ## Deployment Checklist

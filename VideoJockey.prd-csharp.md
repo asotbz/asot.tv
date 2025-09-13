@@ -21,7 +21,7 @@ Create a modern, self-contained web application that automates the acquisition a
 - Automated video downloading from YouTube and other sources
 - Kodi-compatible NFO metadata generation
 - User authentication and session management
-- Embedded SQLite or LiteDB database
+- Embedded SQLite database
 - In-process background job processing
 - Real-time download progress tracking via SignalR
 - Single executable deployment option
@@ -709,32 +709,6 @@ app.MapGet("/metrics", () =>
 }).RequireAuthorization();
 ```
 
-## Migration Path from Python/Node.js
-
-### Phase 1: Data Migration
-1. Export existing SQLite data to JSON
-2. Create migration tool in C#
-3. Import data into new SQLite schema
-4. Migrate configuration from environment variables to database
-5. Verify data integrity
-
-### Phase 2: Feature Parity
-1. Implement core video management
-2. Port download functionality
-3. Migrate authentication system
-4. Recreate UI in Blazor
-
-### Phase 3: Testing & Validation
-1. Side-by-side testing
-2. Performance benchmarking
-3. User acceptance testing
-4. Security audit
-
-### Phase 4: Deployment
-1. Build Docker image
-2. Test container deployment
-3. Document upgrade process
-4. Provide rollback plan
 
 ## Performance Targets
 
