@@ -23,7 +23,6 @@ public class SystemConfiguration
     
     // API Keys (encrypted in database)
     public string ImvdbApiKey { get; set; }
-    public string YouTubeApiKey { get; set; }
     
     // Storage Settings
     public string MediaPath { get; set; } = "/media";
@@ -36,6 +35,19 @@ public class SystemConfiguration
     public int RetryAttempts { get; set; } = 3;
     public string QualityPreference { get; set; } = "1080p";
     public int RateLimitMbps { get; set; } = 10;
+    
+    // NFO Generation Settings
+    public bool IncludeFeaturedArtistsInTitle { get; set; } = false;
+    public bool IncludeFeaturedArtistsInArtist { get; set; } = true;
+    public string FeaturedArtistSeparator { get; set; } = " feat. ";
+    public GenreSpecificity GenreSpecificity { get; set; } = GenreSpecificity.Specific;
+    public LabelDisplay LabelDisplay { get; set; } = LabelDisplay.Direct;
+    
+    // File Organization Settings
+    public string DirectoryNamingPattern { get; set; } = "{artist}/{year}";
+    public string FileNamingPattern { get; set; } = "{artist} - {title} ({year})";
+    public bool SanitizeFilenames { get; set; } = true;
+    public string InvalidCharacterReplacement { get; set; } = "_";
     
     // Security Settings
     public string JwtSecret { get; set; } // Auto-generated on first run
@@ -55,6 +67,19 @@ public class SystemConfiguration
     public bool IsInitialized { get; set; } = false;
     public string AdminEmail { get; set; }
     public DateTime? LastBackup { get; set; }
+}
+
+// Enums for configuration
+public enum GenreSpecificity
+{
+    Specific,  // "Crunk", "Post-Grunge"
+    Broad      // "Hip Hop/R&B", "Rock"
+}
+
+public enum LabelDisplay
+{
+    Direct,    // Direct record label
+    Parent     // Parent company/label
 }
 
 // Encrypted field attribute for sensitive data
@@ -105,10 +130,6 @@ public class VideoJockeyDbContext : DbContext
         
         modelBuilder.Entity<SystemConfiguration>()
             .Property(e => e.ImvdbApiKey)
-            .HasConversion(converter);
-            
-        modelBuilder.Entity<SystemConfiguration>()
-            .Property(e => e.YouTubeApiKey)
             .HasConversion(converter);
             
         modelBuilder.Entity<SystemConfiguration>()
@@ -213,7 +234,6 @@ public class ConfigurationService : IConfigurationService
         config.AdminEmail = initDto.AdminEmail;
         config.IsInitialized = true;
         config.ImvdbApiKey = initDto.ImvdbApiKey;
-        config.YouTubeApiKey = initDto.YouTubeApiKey;
         
         await UpdateConfigurationAsync(config);
         
@@ -277,11 +297,6 @@ public class ConfigurationService : IConfigurationService
                             Label="IMVDb API Key" 
                             @bind-Value="InitData.ImvdbApiKey"
                             HelperText="For metadata enrichment"
-                            InputType="InputType.Password" />
-                        <MudTextField 
-                            Label="YouTube API Key" 
-                            @bind-Value="InitData.YouTubeApiKey"
-                            HelperText="For video search and download"
                             InputType="InputType.Password" />
                     </MudStep>
                     
@@ -383,13 +398,6 @@ else
                                 Adornment="Adornment.End"
                                 AdornmentIcon="@Icons.Material.Filled.Visibility"
                                 OnAdornmentClick="ToggleImvdbVisibility" />
-                            <MudTextField 
-                                Label="YouTube API Key"
-                                @bind-Value="Config.YouTubeApiKey"
-                                InputType="InputType.Password"
-                                Adornment="Adornment.End"
-                                AdornmentIcon="@Icons.Material.Filled.Visibility"
-                                OnAdornmentClick="ToggleYouTubeVisibility" />
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -463,6 +471,85 @@ else
                                 @bind-Value="Config.RateLimitMbps"
                                 Min="0" Max="1000"
                                 HelperText="0 = unlimited" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="NFO & Organization">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">NFO Generation</MudText>
+                            <MudSwitch
+                                @bind-Checked="Config.IncludeFeaturedArtistsInTitle"
+                                Label="Include Featured Artists in Title" />
+                            <MudSwitch
+                                @bind-Checked="Config.IncludeFeaturedArtistsInArtist"
+                                Label="Include Featured Artists in Artist Field" />
+                            <MudTextField
+                                Label="Featured Artist Separator"
+                                @bind-Value="Config.FeaturedArtistSeparator"
+                                HelperText="e.g., ' feat. ' or ' ft. '" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">File Organization</MudText>
+                            <MudTextField
+                                Label="Directory Pattern"
+                                @bind-Value="Config.DirectoryNamingPattern"
+                                HelperText="Variables: {artist}, {year}, {genre}, {album}" />
+                            <MudTextField
+                                Label="File Name Pattern"
+                                @bind-Value="Config.FileNamingPattern"
+                                HelperText="Variables: {artist}, {title}, {year}, {featured}" />
+                            <MudSwitch
+                                @bind-Checked="Config.SanitizeFilenames"
+                                Label="Sanitize Filenames" />
+                            <MudTextField
+                                Label="Invalid Character Replacement"
+                                @bind-Value="Config.InvalidCharacterReplacement"
+                                HelperText="Replace invalid chars with this" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">Pattern Examples</MudText>
+                            <MudText Typo="Typo.caption" Class="mb-2">
+                                Available variables: {artist}, {title}, {album}, {year}, {genre}, {director},
+                                {studio}, {label}, {featured}, {artist_full}, {quality}, {date}, {month}, {day}
+                            </MudText>
+                            <MudSimpleTable Dense="true">
+                                <thead>
+                                    <tr>
+                                        <th>Pattern</th>
+                                        <th>Example Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>{artist}/{year}/{artist} - {title}</td>
+                                        <td>Daft Punk/2013/Daft Punk - Get Lucky.mp4</td>
+                                    </tr>
+                                    <tr>
+                                        <td>{genre}/{artist_full} - {title}</td>
+                                        <td>Electronic/Daft Punk feat. Pharrell - Get Lucky.mp4</td>
+                                    </tr>
+                                    <tr>
+                                        <td>{year}/{month} - {artist} - {title}</td>
+                                        <td>2013/04 - Daft Punk - Get Lucky.mp4</td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -742,6 +829,334 @@ public class BackupService
             await entryStream.CopyToAsync(fileStream);
         }
     }
+
+## Data Models
+
+### Video Entity
+
+```csharp
+public class Video
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; }
+    public string Artist { get; set; }
+    public string Album { get; set; }
+    public int? Year { get; set; }
+    public string Genre { get; set; }
+    public string SpecificGenre { get; set; } // e.g., "Crunk"
+    public string BroadGenre { get; set; } // e.g., "Hip Hop/R&B"
+    public string Director { get; set; }
+    public string FilePath { get; set; }
+    public string ThumbnailPath { get; set; }
+    public VideoSource Source { get; set; }
+    public string SourceUrl { get; set; }
+    public int? ImvdbId { get; set; }
+    public string ImvdbUrl { get; set; }
+    public bool IsVerified { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DownloadStatus Status { get; set; }
+    public long? FileSize { get; set; }
+    public int? Duration { get; set; }
+    public string Resolution { get; set; }
+    public string VideoCodec { get; set; }
+    public string AudioCodec { get; set; }
+    public List<string> FeaturedArtists { get; set; } = new();
+    public string Label { get; set; } // Direct label
+    public string ParentLabel { get; set; } // Parent company
+    public DateTime? ReleaseDate { get; set; }
+    public List<string> Tags { get; set; } = new(); // User-defined tags
+}
+```
+
+## Service Layer Architecture
+
+### Core Services
+
+1. **VideoService**: CRUD operations for videos with search capabilities
+2. **DownloadService**: Manages video downloads
+3. **MetadataService**: IMVDb API integration and matching
+4. **ThumbnailService**: Thumbnail generation
+5. **SearchService**: Real-time full-text search on title and artist
+6. **ScheduleService**: Background job scheduling
+7. **NfoGeneratorService**: NFO file creation with configurable genre/label
+8. **FileOrganizationService**: Pattern-based file naming
+9. **CollectionImportService**: Import existing video collections
+10. **FileReorganizationService**: Restructure files based on patterns
+11. **TagManagementService**: Bulk tag operations
+
+### Collection Import Service
+
+```csharp
+public interface ICollectionImportService
+{
+    Task<ImportResult> ImportCollectionAsync(string basePath);
+    Task<ImportPreview> PreviewImportAsync(string basePath);
+    Task<Video> ParseNfoFileAsync(string nfoPath);
+    Video ParseFromFilename(string filepath);
+}
+
+public class ImportResult
+{
+    public int ImportedCount { get; set; }
+    public int MatchedCount { get; set; }
+    public List<Video> UnmatchedVideos { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+}
+```
+
+### File Reorganization Service
+
+```csharp
+public interface IFileReorganizationService
+{
+    Task<ReorganizeResult> ReorganizeCollectionAsync(bool preview = false);
+    Task<string> GenerateFilePathAsync(Video video);
+}
+
+public class ReorganizeResult
+{
+    public List<FileChange> Changes { get; set; } = new();
+    public int ProcessedCount { get; set; }
+    public List<string> Errors { get; set; } = new();
+}
+
+public class FileChange
+{
+    public Guid VideoId { get; set; }
+    public string OldPath { get; set; }
+    public string NewPath { get; set; }
+}
+```
+
+## UI Workflows
+
+### Collection Management Page
+
+```razor
+@page "/collection"
+@attribute [Authorize]
+
+<MudContainer>
+    <!-- Real-time Search Bar -->
+    <MudTextField @bind-Value="SearchQuery"
+        Label="Search Collection"
+        Placeholder="Search by artist or title..."
+        Immediate="true"
+        DebounceInterval="300"
+        ValueChanged="OnSearchChanged" />
+    
+    <!-- Bulk Actions Toolbar -->
+    <MudToolBar>
+        <MudCheckBox @bind-Checked="SelectAll" Label="Select All" />
+        <MudSpacer />
+        <MudButton OnClick="ShowBulkTagDialog" Disabled="!HasSelection">
+            Manage Tags
+        </MudButton>
+        <MudButton OnClick="ShowReorganizeDialog" Disabled="!HasSelection">
+            Reorganize Files
+        </MudButton>
+    </MudToolBar>
+    
+    <!-- Video Grid with Multi-Selection -->
+    <MudDataGrid T="Video" 
+        Items="@FilteredVideos"
+        MultiSelection="true"
+        @bind-SelectedItems="SelectedVideos"
+        Virtualize="true">
+        <Columns>
+            <SelectColumn T="Video" />
+            <PropertyColumn Property="x => x.Artist" Title="Artist" />
+            <PropertyColumn Property="x => x.Title" Title="Title" />
+            <TemplateColumn Title="Tags">
+                <CellTemplate>
+                    @foreach (var tag in context.Item.Tags)
+                    {
+                        <MudChip Size="Size.Small">@tag</MudChip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+</MudContainer>
+```
+
+## Updated Settings Tab - NFO & Organization
+
+```razor
+<MudTabPanel Text="NFO & Organization">
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">NFO Generation</MudText>
+                    
+                    <!-- Featured Artists -->
+                    <MudSwitch
+                        @bind-Checked="Config.IncludeFeaturedArtistsInTitle"
+                        Label="Include Featured Artists in Title" />
+                    <MudSwitch
+                        @bind-Checked="Config.IncludeFeaturedArtistsInArtist"
+                        Label="Include Featured Artists in Artist Field" />
+                    <MudTextField
+                        Label="Featured Artist Separator"
+                        @bind-Value="Config.FeaturedArtistSeparator" />
+                    
+                    <!-- Genre Settings -->
+                    <MudSelect Label="Genre Specificity"
+                        @bind-Value="Config.GenreSpecificity">
+                        <MudSelectItem Value="GenreSpecificity.Specific">
+                            Specific (Crunk, Post-Grunge)
+                        </MudSelectItem>
+                        <MudSelectItem Value="GenreSpecificity.Broad">
+                            Broad (Hip Hop/R&B, Rock)
+                        </MudSelectItem>
+                    </MudSelect>
+                    
+                    <!-- Label Settings -->
+                    <MudSelect Label="Label Display"
+                        @bind-Value="Config.LabelDisplay">
+                        <MudSelectItem Value="LabelDisplay.Direct">
+                            Direct Label
+                        </MudSelectItem>
+                        <MudSelectItem Value="LabelDisplay.Parent">
+                            Parent Company
+                        </MudSelectItem>
+                    </MudSelect>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">File Organization</MudText>
+                    <MudTextField
+                        Label="Directory Pattern"
+                        @bind-Value="Config.DirectoryNamingPattern"
+                        HelperText="Variables: {artist}, {year}, {genre}, {album}" />
+                    <MudTextField
+                        Label="File Name Pattern"
+                        @bind-Value="Config.FileNamingPattern"
+                        HelperText="Variables: {artist}, {title}, {year}, {featured}" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudTabPanel>
+```
+
+## Workflow Diagrams
+
+### Collection Import Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant ImportService
+    participant FileSystem
+    participant IMVDb
+    participant Database
+    
+    User->>UI: Select import folder
+    UI->>ImportService: Scan collection
+    ImportService->>FileSystem: List video files
+    ImportService->>FileSystem: Check for NFO files
+    
+    loop For each video
+        alt NFO exists
+            ImportService->>FileSystem: Parse NFO
+        else No NFO
+            ImportService->>ImportService: Parse filename
+        end
+        
+        ImportService->>IMVDb: Search for match
+        IMVDb-->>ImportService: Return metadata
+        ImportService->>Database: Store video entry
+    end
+    
+    ImportService-->>UI: Return import results
+    UI-->>User: Display summary with match status
+```
+
+### File Reorganization Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant ReorgService
+    participant PatternEngine
+    participant FileSystem
+    participant Database
+    
+    User->>UI: Request reorganization
+    UI->>ReorgService: Get preview
+    
+    loop For each video
+        ReorgService->>PatternEngine: Apply naming pattern
+        PatternEngine-->>ReorgService: New path
+    end
+    
+    ReorgService-->>UI: Return preview
+    UI-->>User: Show planned changes
+    
+    User->>UI: Confirm reorganization
+    UI->>ReorgService: Execute
+    
+    loop For each video
+        ReorgService->>FileSystem: Move file
+        ReorgService->>FileSystem: Update NFO
+        ReorgService->>Database: Update path
+    end
+    
+    ReorgService-->>UI: Return results
+```
+
+## Database Schema Updates
+
+```sql
+-- Videos table with new fields
+CREATE TABLE Videos (
+    Id TEXT PRIMARY KEY,
+    Title TEXT NOT NULL,
+    Artist TEXT NOT NULL,
+    Album TEXT,
+    Year INTEGER,
+    Genre TEXT,
+    SpecificGenre TEXT,
+    BroadGenre TEXT,
+    Director TEXT,
+    FilePath TEXT,
+    ThumbnailPath TEXT,
+    Source INTEGER,
+    SourceUrl TEXT,
+    ImvdbId INTEGER,
+    ImvdbUrl TEXT,
+    IsVerified INTEGER,
+    CreatedAt TEXT,
+    UpdatedAt TEXT,
+    Status INTEGER,
+    FileSize INTEGER,
+    Duration INTEGER,
+    Resolution TEXT,
+    VideoCodec TEXT,
+    AudioCodec TEXT,
+    FeaturedArtists TEXT, -- JSON array
+    Label TEXT,
+    ParentLabel TEXT,
+    ReleaseDate TEXT,
+    Tags TEXT -- JSON array
+);
+
+-- Indexes for search performance
+CREATE INDEX idx_videos_artist ON Videos(Artist);
+CREATE INDEX idx_videos_title ON Videos(Title);
+CREATE INDEX idx_videos_artist_title ON Videos(Artist, Title);
+CREATE INDEX idx_videos_genre ON Videos(Genre);
+CREATE INDEX idx_videos_year ON Videos(Year);
+```
 }
 ```
 

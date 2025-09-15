@@ -107,8 +107,6 @@ public class SystemConfiguration
     [Encrypted]
     public string ImvdbApiKey { get; set; }
     [Encrypted]
-    public string YouTubeApiKey { get; set; }
-    [Encrypted]
     public string JwtSecret { get; set; }
     
     public string MediaPath { get; set; } = "/media";
@@ -262,11 +260,8 @@ public class ConfigurationService : IConfigurationService
                         <MudAlert Severity="Severity.Info">
                             You can add these later in Settings
                         </MudAlert>
-                        <MudTextField Label="IMVDb API Key" 
+                        <MudTextField Label="IMVDb API Key"
                                     @bind-Value="InitData.ImvdbApiKey"
-                                    InputType="InputType.Password" />
-                        <MudTextField Label="YouTube API Key" 
-                                    @bind-Value="InitData.YouTubeApiKey"
                                     InputType="InputType.Password" />
                     </MudStep>
                     
@@ -371,7 +366,1433 @@ await app.RunAsync();
 
 ### Phase 3: Core Features (Week 2)
 
-#### 3.1 Video Service
+#### 3.1 NFO Generation and File Organization
+
+```csharp
+// Services/NfoGeneratorService.cs
+public class NfoGeneratorService
+{
+    private readonly IConfigurationService _configService;
+    
+    public async Task<XDocument> GenerateVideoNfoAsync(Video video)
+    {
+        var config = await _configService.GetConfigurationAsync();
+        
+        // Build artist string based on configuration
+        var artistString = video.Artist;
+        if (video.FeaturedArtists?.Any() == true && config.IncludeFeaturedArtistsInArtist)
+        {
+            artistString += config.FeaturedArtistSeparator +
+                string.Join(", ", video.FeaturedArtists);
+        }
+        
+        // Build title string based on configuration
+        var titleString = video.Title;
+        if (video.FeaturedArtists?.Any() == true && config.IncludeFeaturedArtistsInTitle)
+        {
+            titleString += config.FeaturedArtistSeparator +
+                string.Join(", ", video.FeaturedArtists);
+        }
+        
+        // Select genre based on configuration
+        var genreValue = config.GenreSpecificity == GenreSpecificity.Specific
+            ? video.SpecificGenre ?? video.Genre
+            : video.BroadGenre ?? video.Genre;
+            
+        // Select label based on configuration
+        var labelValue = config.LabelDisplay == LabelDisplay.Direct
+            ? video.Label
+            : video.ParentLabel ?? video.Label;
+        
+        return new XDocument(
+            new XDeclaration("1.0", "UTF-8", "yes"),
+            new XElement("musicvideo",
+                new XElement("title", titleString),
+                new XElement("artist", artistString),
+                new XElement("album", video.Album),
+                new XElement("year", video.Year),
+                new XElement("genre", genreValue),
+                new XElement("director", video.Director),
+                new XElement("studio", video.Studio),
+                new XElement("label", labelValue),
+                new XElement("runtime", video.Duration?.TotalSeconds)
+            ));
+    }
+}
+
+// Services/FileOrganizationService.cs
+public class FileOrganizationService
+{
+    private readonly IConfigurationService _configService;
+    
+    public async Task<string> GenerateFilePathAsync(Video video)
+    {
+        var config = await _configService.GetConfigurationAsync();
+        
+        // Process patterns with variable substitution
+        var directoryPath = await ProcessPatternAsync(
+            config.DirectoryNamingPattern, video);
+        var filename = await ProcessPatternAsync(
+            config.FileNamingPattern, video);
+        
+        // Add extension and sanitize
+        var extension = Path.GetExtension(video.FilePath) ?? ".mp4";
+        filename = Path.ChangeExtension(filename, extension);
+        
+        if (config.SanitizeFilenames)
+        {
+            directoryPath = SanitizePath(directoryPath, config.InvalidCharacterReplacement);
+            filename = SanitizeFilename(filename, config.InvalidCharacterReplacement);
+        }
+        
+        return Path.Combine(config.MediaPath, directoryPath, filename);
+    }
+    
+    private async Task<string> ProcessPatternAsync(string pattern, Video video)
+    {
+        var config = await _configService.GetConfigurationAsync();
+        
+        // Available metadata variables
+        var replacements = new Dictionary<string, string>
+        {
+            {"{artist}", video.Artist},
+            {"{title}", video.Title},
+            {"{album}", video.Album ?? ""},
+            {"{year}", video.Year?.ToString() ?? ""},
+            {"{genre}", video.Genre ?? ""},
+            {"{director}", video.Director ?? ""},
+            {"{studio}", video.Studio ?? ""},
+            {"{label}", video.Label ?? ""},
+            {"{featured}", string.Join(", ", video.FeaturedArtists ?? new List<string>())},
+            {"{artist_full}", GetFullArtistString(video, config)},
+            {"{quality}", video.Metadata?["quality"]?.ToString() ?? "HD"}
+        };
+        
+        // Replace all variables in pattern
+        foreach (var kvp in replacements)
+        {
+            pattern = pattern.Replace(kvp.Key, kvp.Value);
+        }
+        
+        return pattern.Trim();
+    }
+    
+    private string GetFullArtistString(Video video, SystemConfiguration config)
+    {
+        if (video.FeaturedArtists?.Any() == true && config.IncludeFeaturedArtistsInArtist)
+        {
+            return video.Artist + config.FeaturedArtistSeparator +
+                string.Join(", ", video.FeaturedArtists);
+        }
+        return video.Artist;
+    }
+    
+    private string SanitizePath(string path, string replacement)
+    {
+        var invalidChars = Path.GetInvalidPathChars();
+        foreach (var c in invalidChars)
+        {
+            path = path.Replace(c.ToString(), replacement);
+        }
+        return path;
+    }
+    
+    private string SanitizeFilename(string filename, string replacement)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        foreach (var c in invalidChars)
+        {
+            filename = filename.Replace(c.ToString(), replacement);
+        }
+        
+        // Ensure filename isn't too long
+        if (filename.Length > 255)
+        {
+            var ext = Path.GetExtension(filename);
+            var name = Path.GetFileNameWithoutExtension(filename);
+            filename = name.Substring(0, 255 - ext.Length) + ext;
+        }
+        
+        return filename;
+    }
+}
+```
+
+#### 3.2 Collection Import Service
+
+```csharp
+// Services/CollectionImportService.cs
+public class CollectionImportService
+{
+    private readonly IVideoService _videoService;
+    private readonly IMetadataService _metadataService;
+    private readonly ILogger<CollectionImportService> _logger;
+    
+    public async Task<ImportResult> ImportCollectionAsync(string basePath)
+    {
+        var result = new ImportResult();
+        var videoExtensions = new[] { ".mp4", ".mkv", ".avi", ".mov", ".webm" };
+        
+        // Scan for video files
+        var videoFiles = Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories)
+            .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLower()));
+            
+        foreach (var videoFile in videoFiles)
+        {
+            try
+            {
+                // Check for existing NFO file
+                var nfoPath = Path.ChangeExtension(videoFile, ".nfo");
+                Video video = null;
+                
+                if (File.Exists(nfoPath))
+
+#### 3.2 Metadata Services Integration
+
+```csharp
+// Services/ImvdbService.cs
+public class ImvdbService : IImvdbService
+{
+    private readonly HttpClient _httpClient;
+    private readonly IConfigurationService _configService;
+    private readonly ILogger<ImvdbService> _logger;
+    
+    public ImvdbService(HttpClient httpClient, 
+        IConfigurationService configService,
+        ILogger<ImvdbService> logger)
+    {
+        _httpClient = httpClient;
+        _configService = configService;
+        _logger = logger;
+    }
+    
+    public async Task<ImvdbSearchResult> SearchVideosAsync(string artist, string title)
+    {
+        try
+        {
+            var config = await _configService.GetConfigurationAsync();
+            if (string.IsNullOrEmpty(config.ImvdbApiKey))
+            {
+                _logger.LogWarning("IMVDb API key not configured");
+                return null;
+            }
+            
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("IMVDB-APP-KEY", config.ImvdbApiKey);
+            
+            var query = Uri.EscapeDataString($"{artist} {title}");
+            var response = await _httpClient.GetAsync(
+                $"https://imvdb.com/api/v1/search/videos?q={query}");
+                
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<ImvdbSearchResult>();
+            }
+            
+            _logger.LogWarning("IMVDb search failed: {Status}", response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching IMVDb for {Artist} - {Title}", artist, title);
+            return null;
+        }
+    }
+}
+
+// Services/MusicBrainzService.cs
+public class MusicBrainzService : IMusicBrainzService
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<MusicBrainzService> _logger;
+    private readonly SemaphoreSlim _rateLimiter;
+    
+    public MusicBrainzService(HttpClient httpClient, ILogger<MusicBrainzService> logger)
+    {
+        _httpClient = httpClient;
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", 
+            "VideoJockey/1.0 (https://github.com/videojockey/videojockey)");
+        _logger = logger;
+        _rateLimiter = new SemaphoreSlim(1, 1); // MusicBrainz requires 1 req/sec
+    }
+    
+    public async Task<MusicBrainzRecording> SearchRecordingAsync(string artist, string title)
+    {
+        await _rateLimiter.WaitAsync();
+        try
+        {
+            await Task.Delay(1000); // Rate limiting
+            
+            var query = Uri.EscapeDataString($"artist:\"{artist}\" AND recording:\"{title}\"");
+            var url = $"https://musicbrainz.org/ws/2/recording?" +
+                     $"query={query}&fmt=json&inc=artist-credits+releases+genres+labels";
+            
+            var response = await _httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<MusicBrainzSearchResult>();
+                return result?.Recordings?.FirstOrDefault();
+            }
+            
+            _logger.LogWarning("MusicBrainz search failed: {Status}", response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching MusicBrainz for {Artist} - {Title}", 
+                artist, title);
+            return null;
+        }
+        finally
+        {
+            _rateLimiter.Release();
+        }
+    }
+}
+
+// Services/MetadataService.cs - Unified service
+public class MetadataService : IMetadataService
+{
+    private readonly IImvdbService _imvdbService;
+    private readonly IMusicBrainzService _musicBrainzService;
+    private readonly ILogger<MetadataService> _logger;
+    
+    public MetadataService(
+        IImvdbService imvdbService,
+        IMusicBrainzService musicBrainzService,
+        ILogger<MetadataService> logger)
+    {
+        _imvdbService = imvdbService;
+        _musicBrainzService = musicBrainzService;
+        _logger = logger;
+    }
+    
+    public async Task<VideoMetadata> GetCompleteMetadataAsync(string artist, string title)
+    {
+        var metadata = new VideoMetadata
+        {
+            SearchArtist = artist,
+            SearchTitle = title
+        };
+        
+        // Get video metadata from IMVDb (year, artist, title, director, sources)
+        var imvdbTask = GetImvdbMetadataAsync(artist, title);
+        
+        // Get audio metadata from MusicBrainz (featured artists, album, genre, label)
+        var musicBrainzTask = GetMusicBrainzMetadataAsync(artist, title);
+        
+        // Run both API calls in parallel
+        await Task.WhenAll(imvdbTask, musicBrainzTask);
+        
+        // Merge results
+        var imvdbData = await imvdbTask;
+        var mbData = await musicBrainzTask;
+        
+        // IMVDb provides primary video metadata
+        if (imvdbData != null)
+        {
+            metadata.Year = imvdbData.Year;
+            metadata.PrimaryArtist = imvdbData.PrimaryArtist;
+            metadata.Title = imvdbData.Title;
+            metadata.Directors = imvdbData.Directors;
+            metadata.VideoSources = imvdbData.VideoSources;
+            metadata.ImvdbId = imvdbData.ImvdbId;
+            metadata.ImvdbUrl = imvdbData.ImvdbUrl;
+            metadata.ThumbnailUrl = imvdbData.ThumbnailUrl;
+        }
+        
+        // MusicBrainz provides audio metadata
+        if (mbData != null)
+        {
+            metadata.FeaturedArtists = mbData.FeaturedArtists;
+            metadata.Album = mbData.Album;
+            metadata.Genres = mbData.Genres;
+            metadata.SpecificGenre = mbData.SpecificGenre;
+            metadata.BroadGenre = mbData.BroadGenre;
+            metadata.Label = mbData.Label;
+            metadata.ParentLabel = mbData.ParentLabel;
+        }
+        
+        return metadata;
+    }
+    
+    private async Task<VideoMetadata> GetImvdbMetadataAsync(string artist, string title)
+    {
+        try
+        {
+            var result = await _imvdbService.SearchVideosAsync(artist, title);
+            if (result?.Results?.Any() == true)
+            {
+                var video = result.Results.First();
+                return new VideoMetadata
+                {
+                    Year = video.Year,
+                    PrimaryArtist = video.Artists?.FirstOrDefault()?.Name ?? artist,
+                    Title = video.Title ?? title,
+                    Directors = video.Directors?.Select(d => d.Name).ToList(),
+                    ImvdbId = video.Id,
+                    ImvdbUrl = video.ImvdbUrl,
+                    ThumbnailUrl = video.Image?.Url
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get IMVDb metadata");
+        }
+        
+        return null;
+    }
+    
+    private async Task<VideoMetadata> GetMusicBrainzMetadataAsync(string artist, string title)
+    {
+        try
+        {
+            var recording = await _musicBrainzService.SearchRecordingAsync(artist, title);
+            if (recording != null)
+            {
+                var metadata = new VideoMetadata();
+                
+                // Extract featured artists
+                if (recording.ArtistCredits?.Count > 1)
+                {
+                    metadata.FeaturedArtists = recording.ArtistCredits
+                        .Skip(1)
+                        .Select(ac => ac.Name)
+                        .ToList();
+                }
+                
+                // Get album and label from releases
+                if (recording.Releases?.Any() == true)
+                {
+                    var release = recording.Releases.First();
+                    metadata.Album = release.Title;
+                    
+                    if (release.LabelInfo?.Any() == true)
+                    {
+                        metadata.Label = release.LabelInfo.First().Label?.Name;
+                    }
+                }
+                
+                // Extract genres
+                if (recording.Tags?.Any() == true)
+                {
+                    metadata.Genres = recording.Tags
+                        .OrderByDescending(t => t.Count)
+                        .Select(t => t.Name)
+                        .ToList();
+                    metadata.SpecificGenre = metadata.Genres.FirstOrDefault();
+                    metadata.BroadGenre = MapToBroadGenre(metadata.SpecificGenre);
+                }
+                
+                return metadata;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get MusicBrainz metadata");
+        }
+        
+        return null;
+    }
+    
+    private string MapToBroadGenre(string specificGenre)
+    {
+        if (string.IsNullOrEmpty(specificGenre))
+            return "Unknown";
+            
+        var genreMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["crunk"] = "Hip Hop/R&B",
+            ["trap"] = "Hip Hop/R&B",
+            ["hip hop"] = "Hip Hop/R&B",
+            ["post-grunge"] = "Rock",
+            ["indie rock"] = "Rock",
+            ["house"] = "Electronic",
+            ["techno"] = "Electronic",
+            ["k-pop"] = "Pop",
+            ["j-pop"] = "Pop"
+        };
+        
+        foreach (var mapping in genreMap)
+        {
+            if (specificGenre.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                return mapping.Value;
+            }
+
+#### 3.3 NFO Generation with Featured Artists
+
+```csharp
+// Services/NfoService.cs
+public class NfoService : INfoService
+{
+    private readonly ILogger<NfoService> _logger;
+    
+    public NfoService(ILogger<NfoService> logger)
+    {
+        _logger = logger;
+    }
+    
+    public async Task<string> GenerateNfoAsync(Video video)
+    {
+        var doc = new XDocument(
+            new XElement("musicvideo",
+                // Basic metadata
+                new XElement("title", video.Title),
+                new XElement("year", video.Year?.ToString() ?? ""),
+                new XElement("premiered", video.Year?.ToString() ?? ""),
+                
+                // Primary artist
+                new XElement("artist", video.PrimaryArtist),
+                
+                // Featured artists as separate artist tags
+                video.FeaturedArtists?.Select(fa => new XElement("artist", fa)) ?? Enumerable.Empty<XElement>(),
+                
+                // Album information
+                new XElement("album", video.Album ?? ""),
+                
+                // Directors
+                video.Directors?.Select(d => new XElement("director", d)) ?? Enumerable.Empty<XElement>(),
+                
+                // Genre tags
+                new XElement("genre", video.BroadGenre ?? "Unknown"),
+                video.SpecificGenre != null ? new XElement("tag", video.SpecificGenre) : null,
+                video.Genres?.Select(g => new XElement("tag", g)) ?? Enumerable.Empty<XElement>(),
+                
+                // Label information
+                new XElement("studio", video.Label ?? ""),
+                video.ParentLabel != null ? new XElement("studio", video.ParentLabel) : null,
+                
+                // Sources
+                video.VideoSources?.Select(s => new XElement("source", s)) ?? Enumerable.Empty<XElement>(),
+                
+                // External IDs
+                video.ImvdbId != null ? new XElement("imvdbid", video.ImvdbId) : null,
+                video.ImvdbUrl != null ? new XElement("imvdburl", video.ImvdbUrl) : null,
+                
+                // File information
+                new XElement("fileinfo",
+                    new XElement("duration", video.Duration?.ToString(@"mm\:ss") ?? ""),
+                    new XElement("videocodec", video.VideoCodec ?? ""),
+                    new XElement("audiocodec", video.AudioCodec ?? ""),
+                    new XElement("width", video.Width?.ToString() ?? ""),
+                    new XElement("height", video.Height?.ToString() ?? ""),
+                    new XElement("aspectratio", video.AspectRatio ?? "")
+                ),
+                
+                // Thumbnail
+                video.ThumbnailUrl != null ? new XElement("thumb", video.ThumbnailUrl) : null,
+                
+                // Custom tags
+                video.Tags?.Select(t => new XElement("tag", t)) ?? Enumerable.Empty<XElement>(),
+                
+                // Date added
+                new XElement("dateadded", video.DateAdded.ToString("yyyy-MM-dd HH:mm:ss"))
+            )
+        );
+        
+        // Remove null elements
+        doc.Descendants()
+            .Where(e => e.IsEmpty && !e.HasAttributes)
+            .Remove();
+        
+        return doc.ToString();
+    }
+    
+    public async Task<Video> ParseNfoAsync(string nfoContent)
+    {
+        try
+        {
+            var doc = XDocument.Parse(nfoContent);
+            var root = doc.Root;
+            
+            if (root?.Name.LocalName != "musicvideo")
+            {
+                _logger.LogWarning("Invalid NFO format: root element is not 'musicvideo'");
+                return null;
+            }
+            
+            var video = new Video
+            {
+                Title = root.Element("title")?.Value,
+                PrimaryArtist = root.Elements("artist").FirstOrDefault()?.Value,
+                Album = root.Element("album")?.Value,
+                BroadGenre = root.Element("genre")?.Value,
+                Label = root.Elements("studio").FirstOrDefault()?.Value,
+                ImvdbId = root.Element("imvdbid")?.Value,
+                ImvdbUrl = root.Element("imvdburl")?.Value,
+                ThumbnailUrl = root.Element("thumb")?.Value
+            };
+            
+            // Parse year
+            if (int.TryParse(root.Element("year")?.Value, out var year))
+            {
+                video.Year = year;
+            }
+            
+            // Parse featured artists (all artist tags except the first)
+            var allArtists = root.Elements("artist").Select(e => e.Value).ToList();
+            if (allArtists.Count > 1)
+            {
+                video.FeaturedArtists = allArtists.Skip(1).ToList();
+            }
+            
+            // Parse directors
+            var directors = root.Elements("director").Select(e => e.Value).ToList();
+            if (directors.Any())
+            {
+                video.Directors = directors;
+            }
+            
+            // Parse tags (includes specific genre)
+            var tags = root.Elements("tag").Select(e => e.Value).ToList();
+            if (tags.Any())
+            {
+                video.Tags = tags;
+                video.SpecificGenre = tags.FirstOrDefault();
+            }
+            
+            // Parse all genres
+            var genres = root.Elements("tag")
+                .Union(root.Elements("genre"))
+                .Select(e => e.Value)
+                .Distinct()
+                .ToList();
+            if (genres.Any())
+            {
+                video.Genres = genres;
+            }
+            
+            // Parse studios (label and parent label)
+            var studios = root.Elements("studio").Select(e => e.Value).ToList();
+            if (studios.Count > 1)
+            {
+                video.ParentLabel = studios[1];
+            }
+            
+            // Parse sources
+            var sources = root.Elements("source").Select(e => e.Value).ToList();
+            if (sources.Any())
+            {
+                video.VideoSources = sources;
+            }
+            
+            // Parse file information
+            var fileInfo = root.Element("fileinfo");
+            if (fileInfo != null)
+            {
+                if (TimeSpan.TryParse(fileInfo.Element("duration")?.Value, out var duration))
+                {
+                    video.Duration = duration;
+                }
+                
+                video.VideoCodec = fileInfo.Element("videocodec")?.Value;
+                video.AudioCodec = fileInfo.Element("audiocodec")?.Value;
+                
+                if (int.TryParse(fileInfo.Element("width")?.Value, out var width))
+                {
+                    video.Width = width;
+                }
+                
+                if (int.TryParse(fileInfo.Element("height")?.Value, out var height))
+                {
+                    video.Height = height;
+                }
+                
+                video.AspectRatio = fileInfo.Element("aspectratio")?.Value;
+            }
+            
+            // Parse date added
+            if (DateTime.TryParse(root.Element("dateadded")?.Value, out var dateAdded))
+            {
+                video.DateAdded = dateAdded;
+            }
+            
+            return video;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse NFO content");
+            return null;
+        }
+    }
+    
+    public async Task SaveNfoAsync(Video video)
+    {
+        try
+        {
+            var nfoContent = await GenerateNfoAsync(video);
+            var nfoPath = Path.ChangeExtension(video.FilePath, ".nfo");
+            await File.WriteAllTextAsync(nfoPath, nfoContent);
+            _logger.LogInformation("Saved NFO for {Title} to {Path}", video.Title, nfoPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save NFO for video {Id}", video.Id);
+            throw;
+        }
+    }
+    
+    public async Task<bool> LoadNfoAsync(Video video)
+    {
+        try
+        {
+            var nfoPath = Path.ChangeExtension(video.FilePath, ".nfo");
+            if (!File.Exists(nfoPath))
+            {
+                _logger.LogDebug("No NFO file found for {Path}", video.FilePath);
+                return false;
+            }
+            
+            var nfoContent = await File.ReadAllTextAsync(nfoPath);
+            var parsedVideo = await ParseNfoAsync(nfoContent);
+            
+            if (parsedVideo == null)
+            {
+                _logger.LogWarning("Failed to parse NFO for {Path}", nfoPath);
+                return false;
+            }
+            
+            // Update video with parsed data
+            video.Title = parsedVideo.Title ?? video.Title;
+            video.PrimaryArtist = parsedVideo.PrimaryArtist ?? video.PrimaryArtist;
+            video.FeaturedArtists = parsedVideo.FeaturedArtists ?? video.FeaturedArtists;
+            video.Album = parsedVideo.Album ?? video.Album;
+            video.Year = parsedVideo.Year ?? video.Year;
+            video.Directors = parsedVideo.Directors ?? video.Directors;
+            video.BroadGenre = parsedVideo.BroadGenre ?? video.BroadGenre;
+            video.SpecificGenre = parsedVideo.SpecificGenre ?? video.SpecificGenre;
+            video.Genres = parsedVideo.Genres ?? video.Genres;
+            video.Label = parsedVideo.Label ?? video.Label;
+            video.ParentLabel = parsedVideo.ParentLabel ?? video.ParentLabel;
+            video.VideoSources = parsedVideo.VideoSources ?? video.VideoSources;
+            video.ImvdbId = parsedVideo.ImvdbId ?? video.ImvdbId;
+            video.ImvdbUrl = parsedVideo.ImvdbUrl ?? video.ImvdbUrl;
+            video.ThumbnailUrl = parsedVideo.ThumbnailUrl ?? video.ThumbnailUrl;
+            video.Tags = parsedVideo.Tags ?? video.Tags;
+            
+            // Update file info if available
+            if (parsedVideo.Duration.HasValue)
+                video.Duration = parsedVideo.Duration;
+            if (!string.IsNullOrEmpty(parsedVideo.VideoCodec))
+                video.VideoCodec = parsedVideo.VideoCodec;
+            if (!string.IsNullOrEmpty(parsedVideo.AudioCodec))
+                video.AudioCodec = parsedVideo.AudioCodec;
+            if (parsedVideo.Width.HasValue)
+                video.Width = parsedVideo.Width;
+            if (parsedVideo.Height.HasValue)
+                video.Height = parsedVideo.Height;
+            if (!string.IsNullOrEmpty(parsedVideo.AspectRatio))
+                video.AspectRatio = parsedVideo.AspectRatio;
+            
+            _logger.LogInformation("Loaded NFO data for {Title}", video.Title);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load NFO for video {Id}", video.Id);
+            return false;
+        }
+    }
+}
+```
+        }
+        
+        return specificGenre;
+    }
+}
+
+// Program.cs - Register services
+builder.Services.AddHttpClient<IImvdbService, ImvdbService>();
+builder.Services.AddHttpClient<IMusicBrainzService, MusicBrainzService>();
+builder.Services.AddScoped<IMetadataService, MetadataService>();
+```
+                {
+                    // Parse existing NFO
+                    video = await ParseNfoFileAsync(nfoPath);
+                    video.FilePath = videoFile;
+                }
+                else
+                {
+                    // Parse from filename
+                    video = ParseFromFilename(videoFile);
+                }
+                
+                // Try to get complete metadata from IMVDb + MusicBrainz
+                var metadata = await _metadataService.GetCompleteMetadataAsync(
+                    video.Artist, video.Title);
+                    
+                if (metadata != null && (metadata.ImvdbId.HasValue || !string.IsNullOrEmpty(metadata.Album)))
+                {
+                    // Merge enriched metadata into video
+                    video = await _metadataService.MergeMetadataIntoVideo(video, metadata);
+                    result.MatchedCount++;
+                }
+                else
+                {
+                    result.UnmatchedVideos.Add(video);
+                }
+                
+                await _videoService.CreateVideoAsync(video);
+                result.ImportedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to import {File}", videoFile);
+                result.Errors.Add($"{videoFile}: {ex.Message}");
+            }
+        }
+        
+        return result;
+    }
+    
+    public async Task<Video> ParseNfoFileAsync(string nfoPath)
+    {
+        var doc = XDocument.Load(nfoPath);
+        var root = doc.Root;
+        
+        return new Video
+        {
+            Title = root.Element("title")?.Value,
+            Artist = root.Element("artist")?.Value,
+            Album = root.Element("album")?.Value,
+            Year = int.TryParse(root.Element("year")?.Value, out var year) ? year : null,
+            Genre = root.Element("genre")?.Value,
+            Director = root.Element("director")?.Value,
+            Studio = root.Element("studio")?.Value,
+            Label = root.Element("label")?.Value
+        };
+    }
+    
+    public Video ParseFromFilename(string filepath)
+    {
+        var filename = Path.GetFileNameWithoutExtension(filepath);
+        var video = new Video { FilePath = filepath };
+        
+        // Common patterns to try
+        var patterns = new[]
+        {
+            @"^(?<artist>[^-]+)\s*-\s*(?<title>[^(]+)(?:\((?<year>\d{4})\))?",
+            @"^(?<artist>[^-]+)\s*-\s*(?<title>.+)",
+            @"^(?<title>.+)$"
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(filename, pattern);
+            if (match.Success)
+            {
+                video.Artist = match.Groups["artist"]?.Value?.Trim() ?? "Unknown Artist";
+                video.Title = match.Groups["title"]?.Value?.Trim() ?? filename;
+                if (int.TryParse(match.Groups["year"]?.Value, out var year))
+                {
+                    video.Year = year;
+                }
+                break;
+            }
+        }
+        
+        return video;
+    }
+    
+}
+```
+
+#### 3.3 File Reorganization Service
+
+```csharp
+// Services/FileReorganizationService.cs
+public class FileReorganizationService
+{
+    private readonly IFileOrganizationService _fileOrgService;
+    private readonly IVideoService _videoService;
+    private readonly INfoGeneratorService _nfoService;
+    private readonly ILogger<FileReorganizationService> _logger;
+    
+    public async Task<ReorganizeResult> ReorganizeCollectionAsync(bool preview = false)
+    {
+        var result = new ReorganizeResult();
+        var videos = await _videoService.GetAllVideosAsync();
+        
+        foreach (var video in videos)
+        {
+            try
+            {
+                var currentPath = video.FilePath;
+                var newPath = await _fileOrgService.GenerateFilePathAsync(video);
+                
+                if (currentPath != newPath)
+                {
+                    result.Changes.Add(new FileChange
+                    {
+                        VideoId = video.Id,
+                        OldPath = currentPath,
+                        NewPath = newPath
+                    });
+                    
+                    if (!preview)
+                    {
+                        // Create directory if needed
+                        var newDir = Path.GetDirectoryName(newPath);
+                        Directory.CreateDirectory(newDir);
+                        
+                        // Move video file
+                        File.Move(currentPath, newPath);
+                        
+                        // Generate and save NFO
+                        var nfo = await _nfoService.GenerateVideoNfoAsync(video);
+                        var nfoPath = Path.ChangeExtension(newPath, ".nfo");
+                        nfo.Save(nfoPath);
+                        
+                        // Move thumbnail if exists
+                        if (!string.IsNullOrEmpty(video.ThumbnailPath) && File.Exists(video.ThumbnailPath))
+                        {
+                            var newThumbPath = Path.ChangeExtension(newPath, ".jpg");
+
+### Phase 6: Collection Management UI (Week 3)
+
+#### 6.1 Collection Import Page
+
+```razor
+@* Components/Pages/Collection/Import.razor *@
+@page "/collection/import"
+@attribute [Authorize]
+@inject ICollectionImportService ImportService
+@inject ISnackbar Snackbar
+
+<MudContainer>
+    <MudText Typo="Typo.h4" Class="mb-4">Import Collection</MudText>
+    
+    <MudCard>
+        <MudCardContent>
+            <MudTextField @bind-Value="ImportPath" 
+                Label="Collection Path" 
+                HelperText="Path to your existing video collection"
+                Variant="Variant.Outlined" />
+                
+            <MudButton Color="Color.Primary" 
+                OnClick="ScanCollection"
+                StartIcon="@Icons.Material.Filled.Search"
+                Class="mt-3">
+                Scan Collection
+            </MudButton>
+        </MudCardContent>
+    </MudCard>
+    
+    @if (ScanResults != null)
+    {
+        <MudCard Class="mt-4">
+            <MudCardContent>
+                <MudText Typo="Typo.h6">Scan Results</MudText>
+                <MudText Typo="Typo.body2" Class="mb-3">
+                    Found @ScanResults.Count videos. @MatchedCount matched with IMVDb.
+                </MudText>
+                
+                <MudDataGrid T="ImportPreviewItem" 
+                    Items="@ScanResults"
+                    MultiSelection="true"
+                    @bind-SelectedItems="SelectedItems">
+                    <Columns>
+                        <SelectColumn T="ImportPreviewItem" />
+                        <PropertyColumn Property="x => x.FileName" Title="File" />
+                        <TemplateColumn Title="Artist">
+                            <CellTemplate>
+                                <MudTextField @bind-Value="context.Item.Artist" 
+                                    Variant="Variant.Text" Margin="Margin.Dense" />
+                            </CellTemplate>
+                        </TemplateColumn>
+                        <TemplateColumn Title="Title">
+                            <CellTemplate>
+                                <MudTextField @bind-Value="context.Item.Title" 
+                                    Variant="Variant.Text" Margin="Margin.Dense" />
+                            </CellTemplate>
+                        </TemplateColumn>
+                        <TemplateColumn Title="IMVDb Match">
+                            <CellTemplate>
+                                @if (context.Item.ImvdbMatch != null)
+                                {
+                                    <MudChip Color="Color.Success" Size="Size.Small">
+                                        Matched
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip Color="Color.Warning" Size="Size.Small">
+                                        No Match
+                                    </MudChip>
+                                }
+                            </CellTemplate>
+                        </TemplateColumn>
+                        <TemplateColumn Title="Actions">
+                            <CellTemplate>
+                                <MudIconButton Icon="@Icons.Material.Filled.Search"
+                                    Size="Size.Small"
+                                    OnClick="() => SearchImvdb(context.Item)" />
+                            </CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+                
+                <MudButton Color="Color.Primary" 
+                    OnClick="ImportSelected"
+                    StartIcon="@Icons.Material.Filled.Download"
+                    Class="mt-4"
+                    Disabled="!SelectedItems.Any()">
+                    Import @SelectedItems.Count Selected Videos
+                </MudButton>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudContainer>
+
+@code {
+    private string ImportPath = "";
+    private List<ImportPreviewItem> ScanResults;
+    private HashSet<ImportPreviewItem> SelectedItems = new();
+    private int MatchedCount => ScanResults?.Count(x => x.ImvdbMatch != null) ?? 0;
+    
+    private async Task ScanCollection()
+    {
+        var preview = await ImportService.PreviewImportAsync(ImportPath);
+        ScanResults = preview.Items;
+        SelectedItems = new HashSet<ImportPreviewItem>(ScanResults);
+    }
+    
+    private async Task ImportSelected()
+    {
+        var result = await ImportService.ImportSelectedAsync(SelectedItems.ToList());
+        Snackbar.Add($"Imported {result.ImportedCount} videos", Severity.Success);
+        NavigationManager.NavigateTo("/collection");
+    }
+    
+    private async Task SearchImvdb(ImportPreviewItem item)
+    {
+        // Open IMVDb search dialog
+        var parameters = new DialogParameters
+        {
+            ["Artist"] = item.Artist,
+            ["Title"] = item.Title
+        };
+        
+        var dialog = await DialogService.ShowAsync<ImvdbSearchDialog>(
+            "Search IMVDb", parameters);
+        var result = await dialog.Result;
+        
+        if (!result.Cancelled && result.Data != null)
+        {
+            item.ImvdbMatch = result.Data as ImvdbMatch;
+        }
+    }
+}
+```
+
+#### 6.2 Collection Management Page
+
+```razor
+@* Components/Pages/Collection/Index.razor *@
+@page "/collection"
+@attribute [Authorize]
+@inject IVideoService VideoService
+@inject ITagManagementService TagService
+
+<MudContainer>
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardContent>
+                    <!-- Real-time search -->
+                    <MudTextField @bind-Value="SearchQuery"
+                        Label="Search Collection"
+                        Placeholder="Search by artist or title..."
+                        Adornment="Adornment.Start"
+                        AdornmentIcon="@Icons.Material.Filled.Search"
+                        Immediate="true"
+                        DebounceInterval="300"
+                        ValueChanged="OnSearchChanged" />
+                        
+                    <!-- Bulk actions toolbar -->
+                    <MudToolBar Class="px-0">
+                        <MudCheckBox @bind-Checked="SelectAll" 
+                            Label="Select All"
+                            CheckedChanged="OnSelectAllChanged" />
+                        <MudSpacer />
+                        <MudButton Color="Color.Primary"
+                            OnClick="ShowBulkTagDialog"
+                            StartIcon="@Icons.Material.Filled.Label"
+                            Disabled="!HasSelection">
+                            Manage Tags
+                        </MudButton>
+                        <MudButton Color="Color.Secondary"
+                            OnClick="ShowReorganizeDialog"
+                            StartIcon="@Icons.Material.Filled.DriveFileMove"
+                            Disabled="!HasSelection"
+                            Class="ml-2">
+                            Reorganize Files
+                        </MudButton>
+                        <MudButton Color="Color.Info"
+                            OnClick="RegenerateNfos"
+                            StartIcon="@Icons.Material.Filled.Description"
+                            Disabled="!HasSelection"
+                            Class="ml-2">
+                            Regenerate NFOs
+                        </MudButton>
+                    </MudToolBar>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12">
+            <MudDataGrid T="Video" 
+                Items="@FilteredVideos"
+                MultiSelection="true"
+                @bind-SelectedItems="SelectedVideos"
+                Virtualize="true"
+                RowsPerPage="50"
+                Dense="true">
+                <Columns>
+                    <SelectColumn T="Video" />
+                    <PropertyColumn Property="x => x.Artist" Title="Artist" />
+                    <PropertyColumn Property="x => x.Title" Title="Title" />
+                    <PropertyColumn Property="x => x.Album" Title="Album" />
+                    <PropertyColumn Property="x => x.Year" Title="Year" />
+                    <TemplateColumn Title="Genre">
+                        <CellTemplate>
+                            <MudTooltip Text="@($"Specific: {context.Item.SpecificGenre ?? "N/A"}")">
+                                <MudText>@context.Item.Genre</MudText>
+                            </MudTooltip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Tags">
+                        <CellTemplate>
+                            @if (context.Item.Tags?.Any() == true)
+                            {
+                                @foreach (var tag in context.Item.Tags)
+                                {
+                                    <MudChip Size="Size.Small" Class="ma-1">@tag</MudChip>
+                                }
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Actions">
+                        <CellTemplate>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                Size="Size.Small"
+                                OnClick="() => EditVideo(context.Item)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                Size="Size.Small"
+                                OnClick="() => PlayVideo(context.Item)" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- Bulk Tag Management Dialog -->
+<MudDialog @bind-IsVisible="ShowTagDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            Manage Tags for @SelectedVideos.Count Videos
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Select tags to add or remove from selected videos
+        </MudText>
+        
+        <MudChipSet @bind-SelectedChips="SelectedTags" 
+            MultiSelection="true"
+            Filter="true">
+            @foreach (var tag in AvailableTags)
+            {
+                <MudChip Text="@tag" Color="Color.Primary" />
+            }
+        </MudChipSet>
+        
+        <MudTextField @bind-Value="NewTag" 
+            Label="Add New Tag"
+            Placeholder="Enter new tag and press Enter"
+            OnKeyDown="@(async (e) => { if (e.Key == "Enter") await AddNewTag(); })"
+            Class="mt-3" />
+            
+        <MudRadioGroup @bind-SelectedOption="TagOperation" Class="mt-3">
+            <MudRadio Option="@("add")" Color="Color.Primary">
+                Add selected tags
+            </MudRadio>
+            <MudRadio Option="@("remove")" Color="Color.Secondary">
+                Remove selected tags
+            </MudRadio>
+        </MudRadioGroup>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => ShowTagDialog = false">Cancel</MudButton>
+        <MudButton OnClick="ApplyTags" Color="Color.Primary">Apply</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- File Reorganization Dialog -->
+<MudDialog @bind-IsVisible="ShowReorganizeDialog" Options="DialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Reorganize Files</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (ReorganizePreview == null)
+        {
+            <MudProgressCircular Indeterminate="true" />
+            <MudText>Calculating changes...</MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">
+                @ReorganizePreview.Changes.Count files will be moved
+            </MudText>
+            
+            <MudSimpleTable Dense="true" Style="max-height: 400px; overflow-y: auto;">
+                <thead>
+                    <tr>
+                        <th>Current Path</th>
+                        <th>New Path</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var change in ReorganizePreview.Changes.Take(20))
+                    {
+                        <tr>
+                            <td>@GetRelativePath(change.OldPath)</td>
+                            <td>@GetRelativePath(change.NewPath)</td>
+                        </tr>
+                    }
+                    @if (ReorganizePreview.Changes.Count > 20)
+                    {
+                        <tr>
+                            <td colspan="2">
+                                <MudText Typo="Typo.caption">
+                                    ... and @(ReorganizePreview.Changes.Count - 20) more
+                                </MudText>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => ShowReorganizeDialog = false">Cancel</MudButton>
+        <MudButton OnClick="ExecuteReorganization" 
+            Color="Color.Primary"
+            Disabled="ReorganizePreview == null">
+            Reorganize Files
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string SearchQuery = "";
+    private List<Video> FilteredVideos = new();
+    private HashSet<Video> SelectedVideos = new();
+    private bool SelectAll;
+    private bool ShowTagDialog;
+    private bool ShowReorganizeDialog;
+    private List<string> AvailableTags = new();
+    private MudChip[] SelectedTags = Array.Empty<MudChip>();
+    private string NewTag = "";
+    private string TagOperation = "add";
+    private ReorganizeResult ReorganizePreview;
+    private bool HasSelection => SelectedVideos.Any();
+    
+    private DialogOptions DialogOptions = new() 
+    { 
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true 
+    };
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVideos();
+        AvailableTags = await TagService.GetAllTagsAsync();
+    }
+    
+    private async Task LoadVideos()
+    {
+        FilteredVideos = (await VideoService.GetAllVideosAsync()).ToList();
+    }
+    
+    private async Task OnSearchChanged(string value)
+    {
+        SearchQuery = value;
+        if (string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            await LoadVideos();
+        }
+        else
+        {
+            FilteredVideos = (await VideoService.SearchVideosAsync(SearchQuery)).ToList();
+        }
+    }
+    
+    private void OnSelectAllChanged(bool value)
+    {
+        if (value)
+        {
+            SelectedVideos = new HashSet<Video>(FilteredVideos);
+        }
+        else
+        {
+            SelectedVideos.Clear();
+        }
+    }
+    
+    private async Task ShowBulkTagDialog()
+    {
+        ShowTagDialog = true;
+    }
+    
+    private async Task ApplyTags()
+    {
+        var tags = SelectedTags.Select(c => c.Text).ToList();
+        var videoIds = SelectedVideos.Select(v => v.Id).ToList();
+        
+        if (TagOperation == "add")
+        {
+            await TagService.AddTagsToVideosAsync(videoIds, tags);
+        }
+        else
+        {
+            await TagService.RemoveTagsFromVideosAsync(videoIds, tags);
+        }
+        
+        ShowTagDialog = false;
+        await LoadVideos();
+        Snackbar.Add($"Tags updated for {videoIds.Count} videos", Severity.Success);
+    }
+    
+    private async Task AddNewTag()
+    {
+        if (!string.IsNullOrWhiteSpace(NewTag) && !AvailableTags.Contains(NewTag))
+        {
+            AvailableTags.Add(NewTag);
+            NewTag = "";
+        }
+    }
+    
+    private async Task ShowReorganizeDialog()
+    {
+        ShowReorganizeDialog = true;
+        ReorganizePreview = await FileReorgService.ReorganizeCollectionAsync(preview: true);
+    }
+    
+    private async Task ExecuteReorganization()
+    {
+        var result = await FileReorgService.ReorganizeCollectionAsync(preview: false);
+        ShowReorganizeDialog = false;
+        Snackbar.Add($"Reorganized {result.ProcessedCount} files", Severity.Success);
+        await LoadVideos();
+    }
+    
+    private async Task RegenerateNfos()
+    {
+        foreach (var video in SelectedVideos)
+        {
+            await NfoService.GenerateAndSaveNfoAsync(video);
+        }
+        Snackbar.Add($"Regenerated NFOs for {SelectedVideos.Count} videos", Severity.Success);
+    }
+    
+    private string GetRelativePath(string fullPath)
+    {
+        var basePath = Config.MediaPath;
+        return fullPath.StartsWith(basePath) 
+            ? fullPath.Substring(basePath.Length).TrimStart('/', '\\')
+            : fullPath;
+    }
+}
+```
+                            File.Move(video.ThumbnailPath, newThumbPath);
+                            video.ThumbnailPath = newThumbPath;
+                        }
+                        
+                        // Update database
+                        video.FilePath = newPath;
+                        await _videoService.UpdateVideoAsync(video);
+                        
+                        result.ProcessedCount++;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reorganize video {VideoId}", video.Id);
+                result.Errors.Add($"Video {video.Title}: {ex.Message}");
+            }
+        }
+        
+        return result;
+    }
+}
+```
+
+#### 3.4 Tag Management Service
+
+```csharp
+// Services/TagManagementService.cs
+public class TagManagementService
+{
+    private readonly VideoJockeyDbContext _context;
+    
+    public async Task<List<string>> GetAllTagsAsync()
+    {
+        var videos = await _context.Videos.ToListAsync();
+        return videos
+            .SelectMany(v => v.Tags ?? new List<string>())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
+    }
+    
+    public async Task AddTagsToVideosAsync(List<Guid> videoIds, List<string> tags)
+    {
+        var videos = await _context.Videos
+            .Where(v => videoIds.Contains(v.Id))
+            .ToListAsync();
+            
+        foreach (var video in videos)
+        {
+            video.Tags ??= new List<string>();
+            foreach (var tag in tags)
+            {
+                if (!video.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                {
+                    video.Tags.Add(tag);
+                }
+            }
+        }
+        
+        await _context.SaveChangesAsync();
+    }
+    
+    public async Task RemoveTagsFromVideosAsync(List<Guid> videoIds, List<string> tags)
+    {
+        var videos = await _context.Videos
+            .Where(v => videoIds.Contains(v.Id))
+            .ToListAsync();
+            
+        foreach (var video in videos)
+        {
+            if (video.Tags != null)
+            {
+                video.Tags.RemoveAll(t =>
+                    tags.Contains(t, StringComparer.OrdinalIgnoreCase));
+            }
+        }
+        
+        await _context.SaveChangesAsync();
+    }
+}
+```
+
+#### 3.5 Video Service with Search
 
 ```csharp
 // Services/VideoService.cs
@@ -388,27 +1809,52 @@ public class VideoService
             .ToListAsync();
     }
     
-    public async Task<Video> CreateVideoAsync(CreateVideoDto dto)
+    public async Task<IEnumerable<Video>> SearchVideosAsync(string query)
     {
-        var video = new Video
-        {
-            Id = Guid.NewGuid(),
-            UserId = dto.UserId,
-            Artist = dto.Artist,
-            Title = dto.Title,
-            Status = DownloadStatus.NotDownloaded,
-            CreatedAt = DateTime.UtcNow
-        };
+        if (string.IsNullOrWhiteSpace(query))
+            return await GetAllVideosAsync();
+            
+        var searchLower = query.ToLower();
+        
+        return await _context.Videos
+            .Where(v =>
+                EF.Functions.Like(v.Artist.ToLower(), $"%{searchLower}%") ||
+                EF.Functions.Like(v.Title.ToLower(), $"%{searchLower}%"))
+            .OrderBy(v => v.Artist)
+            .ThenBy(v => v.Title)
+            .ToListAsync();
+    }
+    
+    public async Task<Video> CreateVideoAsync(Video video)
+    {
+        video.Id = Guid.NewGuid();
+        video.CreatedAt = DateTime.UtcNow;
+        video.Status = DownloadStatus.NotDownloaded;
         
         _context.Videos.Add(video);
         await _context.SaveChangesAsync();
         
         return video;
     }
+    
+    public async Task UpdateVideoAsync(Video video)
+    {
+        video.UpdatedAt = DateTime.UtcNow;
+        _context.Videos.Update(video);
+        await _context.SaveChangesAsync();
+    }
+    
+    public async Task<IEnumerable<Video>> GetAllVideosAsync()
+    {
+        return await _context.Videos
+            .OrderBy(v => v.Artist)
+            .ThenBy(v => v.Title)
+            .ToListAsync();
+    }
 }
 ```
 
-#### 3.2 Download Service
+#### 3.6 Download Service
 
 ```csharp
 // Services/DownloadService.cs
@@ -533,9 +1979,6 @@ public class DownloadWorker : BackgroundService
                 <MudCardContent>
                     <MudTextField Label="IMVDb API Key"
                                 @bind-Value="Config.ImvdbApiKey"
-                                InputType="InputType.Password" />
-                    <MudTextField Label="YouTube API Key"
-                                @bind-Value="Config.YouTubeApiKey"
                                 InputType="InputType.Password" />
                 </MudCardContent>
             </MudCard>

@@ -287,7 +287,6 @@ metadata:
 type: Opaque
 stringData:
   imvdb-api-key: "your-imvdb-api-key"
-  youtube-api-key: "your-youtube-api-key"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -317,11 +316,6 @@ spec:
             secretKeyRef:
               name: videojockey-secrets
               key: imvdb-api-key
-        - name: ApiKeys__YouTubeApiKey
-          valueFrom:
-            secretKeyRef:
-              name: videojockey-secrets
-              key: youtube-api-key
         volumeMounts:
         - name: data
           mountPath: /data
@@ -425,7 +419,7 @@ docker run -d \
 All settings are managed through the web UI after initial setup:
 
 - **Settings Page** (`/settings` - admin only):
-  - API Keys (IMVDb, YouTube) - encrypted in database
+  - API Keys (IMVDb) - encrypted in database
   - Storage configuration
   - Download preferences
   - Security settings

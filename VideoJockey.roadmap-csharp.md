@@ -201,9 +201,9 @@ public interface IVideoService
 
 ### Week 5: External API Integration
 
-#### IMVDb & YouTube Integration
+#### IMVDb Integration & yt-dlp Search
 - [ ] Create IMVDb API client with Refit
-- [ ] Implement YouTube Data API client
+- [ ] Implement yt-dlp search integration
 - [ ] Add Polly for resilience policies
 - [ ] Create metadata mapping services
 - [ ] Implement caching with IMemoryCache
@@ -248,7 +248,7 @@ public class MetadataService
 
 **Deliverables:**
 - IMVDb integration
-- YouTube API integration
+- yt-dlp search integration
 - Metadata enrichment
 - Search functionality
 
@@ -372,7 +372,7 @@ public class NfoGenerator
 
 #### Source Verification
 - [ ] Create source verification service
-- [ ] Implement YouTube channel verification
+- [ ] Implement video source verification via yt-dlp
 - [ ] Build source comparison algorithm
 - [ ] Add confidence scoring
 - [ ] Create mismatch detection
@@ -548,7 +548,6 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ApiKeys__ImvdbApiKey=${IMVDB_API_KEY}
-      - ApiKeys__YouTubeApiKey=${YOUTUBE_API_KEY}
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:8080/health"]
       interval: 30s
