@@ -1,0 +1,60 @@
+# Directories
+**/bin/
+**/obj/
+**/out/
+**/.vs/
+**/.vscode/
+**/node_modules/
+**/dist/
+**/wwwroot/lib/
+**/logs/
+**/data/
+
+# Files
+**/*.user
+**/*.suo
+**/*.log
+**/*.tmp
+**/*.cache
+**/Thumbs.db
+**/.DS_Store
+*.db
+*.db-shm
+*.db-wal
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+
+# CI/CD
+.github/
+azure-pipelines.yml
+.gitlab-ci.yml
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+
+# Build Results
+*.nupkg
+*.snupkg
+publish/
+
+# Local environment
+.env
+.env.local
+appsettings.Development.json
+launchSettings.json

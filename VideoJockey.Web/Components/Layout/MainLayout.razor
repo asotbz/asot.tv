@@ -1,0 +1,46 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+        <MudText Typo="Typo.h5" Class="ml-3">Video Jockey</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Inherit" />
+        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Color="Color.Inherit" />
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6">Navigation</MudText>
+        </MudDrawerHeader>
+        <MudNavMenu>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+            <MudNavLink Href="/videos" Icon="@Icons.Material.Filled.VideoLibrary">Videos</MudNavLink>
+            <MudNavLink Href="/downloads" Icon="@Icons.Material.Filled.Download">Downloads</MudNavLink>
+            <MudNavLink Href="/import" Icon="@Icons.Material.Filled.Upload">Import</MudNavLink>
+            <MudNavGroup Title="Manage" Icon="@Icons.Material.Filled.Folder" Expanded="false">
+                <MudNavLink Href="/genres" Icon="@Icons.Material.Filled.Category">Genres</MudNavLink>
+                <MudNavLink Href="/tags" Icon="@Icons.Material.Filled.Label">Tags</MudNavLink>
+                <MudNavLink Href="/artists" Icon="@Icons.Material.Filled.Person">Artists</MudNavLink>
+            </MudNavGroup>
+            <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+}

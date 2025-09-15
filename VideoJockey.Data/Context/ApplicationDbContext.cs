@@ -1,0 +1,209 @@
+using Microsoft.EntityFrameworkCore;
+using VideoJockey.Core.Entities;
+
+namespace VideoJockey.Data.Context
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options)
+        {
+        }
+
+        // DbSets for entities
+        public DbSet<Video> Videos { get; set; } = null!;
+        public DbSet<Genre> Genres { get; set; } = null!;
+        public DbSet<Tag> Tags { get; set; } = null!;
+        public DbSet<FeaturedArtist> FeaturedArtists { get; set; } = null!;
+        public DbSet<Configuration> Configurations { get; set; } = null!;
+        public DbSet<DownloadQueue> DownloadQueues { get; set; } = null!;
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // Configure Video entity
+            modelBuilder.Entity<Video>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Artist).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Album).HasMaxLength(500);
+                entity.Property(e => e.FilePath).HasMaxLength(1000);
+                entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
+                entity.Property(e => e.NfoPath).HasMaxLength(1000);
+                entity.Property(e => e.Description).HasMaxLength(5000);
+                entity.Property(e => e.YouTubeId).HasMaxLength(50);
+                entity.Property(e => e.ImvdbId).HasMaxLength(100);
+                entity.Property(e => e.MusicBrainzRecordingId).HasMaxLength(100);
+
+                entity.HasIndex(e => e.Title);
+                entity.HasIndex(e => e.Artist);
+                entity.HasIndex(e => e.YouTubeId);
+                entity.HasIndex(e => e.ImvdbId);
+                entity.HasIndex(e => e.IsActive);
+
+                // Configure many-to-many relationships
+                entity.HasMany(e => e.Genres)
+                    .WithMany(g => g.Videos)
+                    .UsingEntity<Dictionary<string, object>>(
+                        "VideoGenre",
+                        j => j.HasOne<Genre>().WithMany().HasForeignKey("GenreId"),
+                        j => j.HasOne<Video>().WithMany().HasForeignKey("VideoId"));
+
+                entity.HasMany(e => e.Tags)
+                    .WithMany(t => t.Videos)
+                    .UsingEntity<Dictionary<string, object>>(
+                        "VideoTag",
+                        j => j.HasOne<Tag>().WithMany().HasForeignKey("TagId"),
+                        j => j.HasOne<Video>().WithMany().HasForeignKey("VideoId"));
+
+                entity.HasMany(e => e.FeaturedArtists)
+                    .WithMany(f => f.Videos)
+                    .UsingEntity<Dictionary<string, object>>(
+                        "VideoFeaturedArtist",
+                        j => j.HasOne<FeaturedArtist>().WithMany().HasForeignKey("FeaturedArtistId"),
+                        j => j.HasOne<Video>().WithMany().HasForeignKey("VideoId"));
+            });
+
+            // Configure Genre entity
+            modelBuilder.Entity<Genre>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.HasIndex(e => e.Name).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure Tag entity
+            modelBuilder.Entity<Tag>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Color).HasMaxLength(7);
+                entity.HasIndex(e => e.Name).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure FeaturedArtist entity
+            modelBuilder.Entity<FeaturedArtist>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Biography).HasMaxLength(5000);
+                entity.Property(e => e.ImagePath).HasMaxLength(1000);
+                entity.Property(e => e.ImvdbArtistId).HasMaxLength(100);
+                entity.Property(e => e.MusicBrainzArtistId).HasMaxLength(100);
+                entity.HasIndex(e => e.Name);
+                entity.HasIndex(e => e.ImvdbArtistId);
+                entity.HasIndex(e => e.MusicBrainzArtistId);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure Configuration entity
+            modelBuilder.Entity<Configuration>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Key).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Value).IsRequired();
+                entity.Property(e => e.Category).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.HasIndex(e => new { e.Category, e.Key }).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure DownloadQueue entity
+            modelBuilder.Entity<DownloadQueue>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Url).IsRequired().HasMaxLength(2000);
+                entity.Property(e => e.Title).HasMaxLength(500);
+                entity.Property(e => e.Artist).HasMaxLength(500);
+                entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+                entity.Property(e => e.FilePath).HasMaxLength(1000);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.Priority);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Seed initial configuration data with static dates
+            var seedDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            
+            modelBuilder.Entity<Configuration>().HasData(
+                new Configuration
+                {
+                    Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+                    Key = "AppVersion",
+                    Value = "1.0.0",
+                    Category = "System",
+                    Description = "Application version",
+                    IsSystem = true,
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                },
+                new Configuration
+                {
+                    Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+                    Key = "MediaPath",
+                    Value = "/media/videos",
+                    Category = "Paths",
+                    Description = "Default media storage path",
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                },
+                new Configuration
+                {
+                    Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+                    Key = "ThumbnailPath",
+                    Value = "/media/thumbnails",
+                    Category = "Paths",
+                    Description = "Thumbnail storage path",
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                },
+                new Configuration
+                {
+                    Id = Guid.Parse("00000000-0000-0000-0000-000000000004"),
+                    Key = "MaxConcurrentDownloads",
+                    Value = "2",
+                    Category = "Downloads",
+                    Description = "Maximum number of concurrent downloads",
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                },
+                new Configuration
+                {
+                    Id = Guid.Parse("00000000-0000-0000-0000-000000000005"),
+                    Key = "IsFirstRun",
+                    Value = "true",
+                    Category = "System",
+                    Description = "Indicates if this is the first run",
+                    IsSystem = true,
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                }
+            );
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            var entries = ChangeTracker.Entries()
+                .Where(e => e.Entity is BaseEntity && (e.State == EntityState.Added || e.State == EntityState.Modified));
+
+            foreach (var entry in entries)
+            {
+                var entity = (BaseEntity)entry.Entity;
+                entity.UpdatedAt = DateTime.UtcNow;
+
+                if (entry.State == EntityState.Added)
+                {
+                    entity.CreatedAt = DateTime.UtcNow;
+                }
+            }
+
+            return base.SaveChangesAsync(cancellationToken);
+        }
+    }
+}
