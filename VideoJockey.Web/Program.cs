@@ -6,6 +6,7 @@ using Serilog.Events;
 using VideoJockey.Core.Interfaces;
 using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
+using VideoJockey.Services;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -63,6 +64,15 @@ try
     // Register repositories and Unit of Work
     builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+    // Register Services
+    builder.Services.AddScoped<IYtDlpService, YtDlpService>();
+    builder.Services.AddScoped<IDownloadQueueService, DownloadQueueService>();
+    builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
+    builder.Services.AddScoped<IMetadataService, MetadataService>();
+    
+    // Register Background Services
+    builder.Services.AddHostedService<DownloadBackgroundService>();
 
     // Add health checks
     builder.Services.AddHealthChecks()

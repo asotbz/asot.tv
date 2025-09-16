@@ -21,16 +21,26 @@ namespace VideoJockey.Core.Entities
         /// Artist name (if known)
         /// </summary>
         public string? Artist { get; set; }
+        
+        /// <summary>
+        /// Output path for the downloaded file
+        /// </summary>
+        public string? OutputPath { get; set; }
+        
+        /// <summary>
+        /// Format to download (e.g., "best", "720p", etc.)
+        /// </summary>
+        public string? Format { get; set; }
 
         /// <summary>
         /// Download status
         /// </summary>
-        public DownloadStatus Status { get; set; } = DownloadStatus.Pending;
+        public string Status { get; set; } = "Pending";
 
         /// <summary>
         /// Download progress percentage (0-100)
         /// </summary>
-        public int Progress { get; set; } = 0;
+        public double Progress { get; set; } = 0;
 
         /// <summary>
         /// Error message if download failed
@@ -40,12 +50,27 @@ namespace VideoJockey.Core.Entities
         /// <summary>
         /// Download started at
         /// </summary>
-        public DateTime? StartedAt { get; set; }
+        public DateTime? StartedDate { get; set; }
 
         /// <summary>
         /// Download completed at
         /// </summary>
-        public DateTime? CompletedAt { get; set; }
+        public DateTime? CompletedDate { get; set; }
+        
+        /// <summary>
+        /// Date when the item was added to the queue
+        /// </summary>
+        public DateTime AddedDate { get; set; } = DateTime.UtcNow;
+        
+        /// <summary>
+        /// Download speed
+        /// </summary>
+        public string? DownloadSpeed { get; set; }
+        
+        /// <summary>
+        /// Estimated time of arrival
+        /// </summary>
+        public string? ETA { get; set; }
 
         /// <summary>
         /// File size in bytes (if known)
@@ -71,19 +96,20 @@ namespace VideoJockey.Core.Entities
         /// Maximum number of retries allowed
         /// </summary>
         public int MaxRetries { get; set; } = 3;
-    }
-
-    /// <summary>
-    /// Download status enumeration
-    /// </summary>
-    public enum DownloadStatus
-    {
-        Pending,
-        Queued,
-        Downloading,
-        Processing,
-        Completed,
-        Failed,
-        Cancelled
+        
+        /// <summary>
+        /// Soft delete flag
+        /// </summary>
+        public bool IsDeleted { get; set; } = false;
+        
+        /// <summary>
+        /// Soft delete date
+        /// </summary>
+        public DateTime? DeletedDate { get; set; }
+        
+        /// <summary>
+        /// Whether the item is active (legacy compatibility)
+        /// </summary>
+        public new bool IsActive => !IsDeleted;
     }
 }

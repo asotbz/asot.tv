@@ -1,5 +1,6 @@
 ﻿@page "/"
 @using VideoJockey.Core.Interfaces
+@using VideoJockey.Core.Entities
 @inject IUnitOfWork UnitOfWork
 @inject ILogger<Home> Logger
 
@@ -63,7 +64,7 @@
                                 <td>@(download.Title ?? "Unknown")</td>
                                 <td>@(download.Artist ?? "Unknown")</td>
                                 <td>
-                                    <MudChip T="string" Color="@GetStatusColor(download.Status)" Size="Size.Small">
+                                    <MudChip T="string" Color="@GetStatusColorFromString(download.Status)" Size="Size.Small">
                                         @download.Status
                                     </MudChip>
                                 </td>
@@ -126,14 +127,14 @@
             
             // Load counts
             _videoCount = await UnitOfWork.Videos.CountAsync();
-            _downloadCount = await UnitOfWork.DownloadQueues.CountAsync(d => d.Status == DownloadStatus.Downloading || d.Status == DownloadStatus.Queued);
+            _downloadCount = await UnitOfWork.DownloadQueues.CountAsync(d => d.Status == "Downloading" || d.Status == "Queued");
             _genreCount = await UnitOfWork.Genres.CountAsync();
             _tagCount = await UnitOfWork.Tags.CountAsync();
 
             // Load recent downloads
-            var downloads = await UnitOfWork.DownloadQueues.GetAsync(d => 
-                d.Status != DownloadStatus.Completed && 
-                d.Status != DownloadStatus.Cancelled);
+            var downloads = await UnitOfWork.DownloadQueues.GetAsync(d =>
+                d.Status != "Completed" &&
+                d.Status != "Cancelled");
             _recentDownloads = downloads.OrderByDescending(d => d.CreatedAt).Take(5).ToList();
             
             Logger.LogInformation("Dashboard data loaded successfully");
@@ -144,17 +145,17 @@
         }
     }
 
-    private Color GetStatusColor(DownloadStatus status)
+    private Color GetStatusColorFromString(string status)
     {
         return status switch
         {
-            DownloadStatus.Pending => Color.Default,
-            DownloadStatus.Queued => Color.Info,
-            DownloadStatus.Downloading => Color.Primary,
-            DownloadStatus.Processing => Color.Secondary,
-            DownloadStatus.Completed => Color.Success,
-            DownloadStatus.Failed => Color.Error,
-            DownloadStatus.Cancelled => Color.Warning,
+            "Pending" => Color.Default,
+            "Queued" => Color.Info,
+            "Downloading" => Color.Primary,
+            "Processing" => Color.Secondary,
+            "Completed" => Color.Success,
+            "Failed" => Color.Error,
+            "Cancelled" => Color.Warning,
             _ => Color.Default
         };
     }

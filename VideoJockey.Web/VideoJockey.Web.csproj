@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\VideoJockey.Core\VideoJockey.Core.csproj" />
     <ProjectReference Include="..\VideoJockey.Data\VideoJockey.Data.csproj" />
+    <ProjectReference Include="..\VideoJockey.Services\VideoJockey.Services.csproj" />
   </ItemGroup>
 
 </Project>
