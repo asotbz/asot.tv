@@ -8,6 +8,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
+using VideoJockey.Services.Interfaces;
+using DownloadStatusEnum = VideoJockey.Core.Entities.DownloadStatus;
 
 namespace VideoJockey.Services
 {
@@ -56,7 +58,7 @@ namespace VideoJockey.Services
         private async Task ProcessDownloadQueue(CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
-            var downloadQueueService = scope.ServiceProvider.GetRequiredService<IDownloadQueueService>();
+            var downloadQueueService = scope.ServiceProvider.GetRequiredService<VideoJockey.Services.Interfaces.IDownloadQueueService>();
             var ytDlpService = scope.ServiceProvider.GetRequiredService<IYtDlpService>();
 
             var pendingDownloads = await downloadQueueService.GetPendingDownloadsAsync();
@@ -74,16 +76,16 @@ namespace VideoJockey.Services
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-                var downloadQueueService = scope.ServiceProvider.GetRequiredService<IDownloadQueueService>();
+                var downloadQueueService = scope.ServiceProvider.GetRequiredService<VideoJockey.Services.Interfaces.IDownloadQueueService>();
                 var ytDlpService = scope.ServiceProvider.GetRequiredService<IYtDlpService>();
                 var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
                 // Get the queue item - need to handle Guid to int conversion
-                var queueItems = await unitOfWork.DownloadQueues
+                var queueItems = await unitOfWork.DownloadQueueItems
                     .GetAsync(q => q.Id.GetHashCode() == queueId);
                 var queueItem = queueItems.FirstOrDefault();
                 
-                if (queueItem == null || queueItem.Status != Core.Interfaces.DownloadStatus.Pending.ToString())
+                if (queueItem == null || queueItem.Status != DownloadStatusEnum.Queued)
                 {
                     return;
                 }
@@ -94,7 +96,7 @@ namespace VideoJockey.Services
                 // Update status to downloading
                 await downloadQueueService.UpdateStatusAsync(
                     queueId, 
-                    Core.Interfaces.DownloadStatus.Downloading);
+                    DownloadStatusEnum.Downloading);
 
                 // Create progress reporter
                 var progress = new Progress<Core.Interfaces.DownloadProgress>(async p =>
@@ -124,7 +126,7 @@ namespace VideoJockey.Services
                     // Mark as completed
                     await downloadQueueService.UpdateStatusAsync(
                         queueId,
-                        Core.Interfaces.DownloadStatus.Completed);
+                        DownloadStatusEnum.Completed);
 
                     _logger.LogInformation("Successfully downloaded video for queue item {QueueId}", queueId);
                 }
@@ -141,7 +143,7 @@ namespace VideoJockey.Services
                     {
                         await downloadQueueService.UpdateStatusAsync(
                             queueId,
-                            Core.Interfaces.DownloadStatus.Failed,
+                            DownloadStatusEnum.Failed,
                             result.ErrorMessage);
                         
                         _logger.LogError("Download permanently failed for queue item {QueueId} after {RetryCount} retries. Error: {Error}", 
@@ -154,11 +156,11 @@ namespace VideoJockey.Services
                 _logger.LogError(ex, "Error processing download for queue item {QueueId}", queueId);
                 
                 using var scope = _scopeFactory.CreateScope();
-                var downloadQueueService = scope.ServiceProvider.GetRequiredService<IDownloadQueueService>();
+                var downloadQueueService = scope.ServiceProvider.GetRequiredService<VideoJockey.Services.Interfaces.IDownloadQueueService>();
                 
                 await downloadQueueService.UpdateStatusAsync(
                     queueId,
-                    Core.Interfaces.DownloadStatus.Failed,
+                    DownloadStatusEnum.Failed,
                     ex.Message);
             }
             finally
@@ -170,7 +172,7 @@ namespace VideoJockey.Services
         private async Task CreateVideoEntity(
             IServiceScope scope,
             Core.Interfaces.DownloadResult result,
-            DownloadQueue queueItem)
+            DownloadQueueItem queueItem)
         {
             try
             {

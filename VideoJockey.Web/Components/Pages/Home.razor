@@ -1,6 +1,7 @@
 ﻿@page "/"
 @using VideoJockey.Core.Interfaces
 @using VideoJockey.Core.Entities
+@using DownloadStatus = VideoJockey.Core.Entities.DownloadStatus
 @inject IUnitOfWork UnitOfWork
 @inject ILogger<Home> Logger
 
@@ -62,10 +63,10 @@
                         {
                             <tr>
                                 <td>@(download.Title ?? "Unknown")</td>
-                                <td>@(download.Artist ?? "Unknown")</td>
+                                <td>-</td>
                                 <td>
-                                    <MudChip T="string" Color="@GetStatusColorFromString(download.Status)" Size="Size.Small">
-                                        @download.Status
+                                    <MudChip T="string" Color="@GetStatusColor(download.Status)" Size="Size.Small">
+                                        @download.Status.ToString()
                                     </MudChip>
                                 </td>
                                 <td>
@@ -117,7 +118,7 @@
     private int _downloadCount = 0;
     private int _genreCount = 0;
     private int _tagCount = 0;
-    private List<DownloadQueue> _recentDownloads = new();
+    private List<DownloadQueueItem> _recentDownloads = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -127,14 +128,14 @@
             
             // Load counts
             _videoCount = await UnitOfWork.Videos.CountAsync();
-            _downloadCount = await UnitOfWork.DownloadQueues.CountAsync(d => d.Status == "Downloading" || d.Status == "Queued");
+            _downloadCount = await UnitOfWork.DownloadQueueItems.CountAsync(d => d.Status == DownloadStatus.Downloading || d.Status == DownloadStatus.Queued);
             _genreCount = await UnitOfWork.Genres.CountAsync();
             _tagCount = await UnitOfWork.Tags.CountAsync();
 
             // Load recent downloads
-            var downloads = await UnitOfWork.DownloadQueues.GetAsync(d =>
-                d.Status != "Completed" &&
-                d.Status != "Cancelled");
+            var downloads = await UnitOfWork.DownloadQueueItems.GetAsync(d =>
+                d.Status != DownloadStatus.Completed &&
+                d.Status != DownloadStatus.Cancelled);
             _recentDownloads = downloads.OrderByDescending(d => d.CreatedAt).Take(5).ToList();
             
             Logger.LogInformation("Dashboard data loaded successfully");
@@ -145,17 +146,15 @@
         }
     }
 
-    private Color GetStatusColorFromString(string status)
+    private Color GetStatusColor(DownloadStatus status)
     {
         return status switch
         {
-            "Pending" => Color.Default,
-            "Queued" => Color.Info,
-            "Downloading" => Color.Primary,
-            "Processing" => Color.Secondary,
-            "Completed" => Color.Success,
-            "Failed" => Color.Error,
-            "Cancelled" => Color.Warning,
+            DownloadStatus.Queued => Color.Info,
+            DownloadStatus.Downloading => Color.Primary,
+            DownloadStatus.Completed => Color.Success,
+            DownloadStatus.Failed => Color.Error,
+            DownloadStatus.Cancelled => Color.Warning,
             _ => Color.Default
         };
     }

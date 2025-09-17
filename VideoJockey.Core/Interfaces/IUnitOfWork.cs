@@ -35,9 +35,9 @@ namespace VideoJockey.Core.Interfaces
         IRepository<Configuration> Configurations { get; }
 
         /// <summary>
-        /// Repository for DownloadQueue entities
+        /// Repository for DownloadQueueItem entities
         /// </summary>
-        IRepository<DownloadQueue> DownloadQueues { get; }
+        IRepository<DownloadQueueItem> DownloadQueueItems { get; }
 
         /// <summary>
         /// Save all changes to the database

@@ -31,6 +31,15 @@ namespace VideoJockey.Data.Repositories
             return await _dbSet.Where(e => e.IsActive).ToListAsync();
         }
 
+        public async Task<IEnumerable<T>> GetAllAsync(bool includeDeleted)
+        {
+            if (includeDeleted)
+            {
+                return await _dbSet.ToListAsync();
+            }
+            return await _dbSet.Where(e => e.IsActive).ToListAsync();
+        }
+
         public async Task<IEnumerable<T>> GetAsync(Expression<Func<T, bool>> predicate)
         {
             return await _dbSet.Where(predicate).Where(e => e.IsActive).ToListAsync();

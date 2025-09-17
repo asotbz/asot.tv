@@ -59,6 +59,11 @@ namespace VideoJockey.Core.Entities
         public string? Resolution { get; set; }
 
         /// <summary>
+        /// Video format/container (e.g., mp4, mkv, webm)
+        /// </summary>
+        public string? Format { get; set; }
+
+        /// <summary>
         /// Frame rate
         /// </summary>
         public double? FrameRate { get; set; }

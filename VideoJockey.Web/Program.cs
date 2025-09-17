@@ -7,6 +7,7 @@ using VideoJockey.Core.Interfaces;
 using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
+using VideoJockey.Web.Middleware;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -67,7 +68,7 @@ try
 
     // Register Services
     builder.Services.AddScoped<IYtDlpService, YtDlpService>();
-    builder.Services.AddScoped<IDownloadQueueService, DownloadQueueService>();
+    builder.Services.AddScoped<VideoJockey.Services.Interfaces.IDownloadQueueService, DownloadQueueService>();
     builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
     builder.Services.AddScoped<IMetadataService, MetadataService>();
     
@@ -120,6 +121,9 @@ try
     app.UseHttpsRedirection();
     app.UseStaticFiles();
     app.UseAntiforgery();
+    
+    // Use setup check middleware to redirect to setup if not configured
+    app.UseSetupCheck();
 
     // Map health check endpoints
     app.MapHealthChecks("/health");

@@ -16,7 +16,7 @@ namespace VideoJockey.Data.Context
         public DbSet<Tag> Tags { get; set; } = null!;
         public DbSet<FeaturedArtist> FeaturedArtists { get; set; } = null!;
         public DbSet<Configuration> Configurations { get; set; } = null!;
-        public DbSet<DownloadQueue> DownloadQueues { get; set; } = null!;
+        public DbSet<DownloadQueueItem> DownloadQueueItems { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -113,19 +113,23 @@ namespace VideoJockey.Data.Context
                 entity.HasIndex(e => e.IsActive);
             });
 
-            // Configure DownloadQueue entity
-            modelBuilder.Entity<DownloadQueue>(entity =>
+            // Configure DownloadQueueItem entity
+            modelBuilder.Entity<DownloadQueueItem>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Url).IsRequired().HasMaxLength(2000);
                 entity.Property(e => e.Title).HasMaxLength(500);
-                entity.Property(e => e.Artist).HasMaxLength(500);
                 entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50);
                 entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
-                entity.Property(e => e.FilePath).HasMaxLength(1000);
                 entity.HasIndex(e => e.Status);
                 entity.HasIndex(e => e.Priority);
-                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.IsDeleted);
+                
+                // Configure relationship with Video
+                entity.HasOne(e => e.Video)
+                    .WithMany()
+                    .HasForeignKey(e => e.VideoId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             // Seed initial configuration data with static dates

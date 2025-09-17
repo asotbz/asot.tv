@@ -24,6 +24,11 @@ namespace VideoJockey.Core.Interfaces
         Task<IEnumerable<T>> GetAllAsync();
 
         /// <summary>
+        /// Get all entities with optional include deleted
+        /// </summary>
+        Task<IEnumerable<T>> GetAllAsync(bool includeDeleted);
+
+        /// <summary>
         /// Get entities matching a predicate
         /// </summary>
         Task<IEnumerable<T>> GetAsync(Expression<Func<T, bool>> predicate);
