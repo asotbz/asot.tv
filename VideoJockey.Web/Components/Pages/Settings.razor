@@ -1,10 +1,14 @@
 @page "/settings"
 @using VideoJockey.Core.Entities
 @using VideoJockey.Core.Interfaces
+@using VideoJockey.Services.Interfaces
+@using Microsoft.AspNetCore.Components.Forms
 @using MudBlazor
+@using System.IO
 @inject IUnitOfWork UnitOfWork
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IBackupService BackupService
 
 <PageTitle>Settings - VideoJockey</PageTitle>
 
@@ -305,6 +309,7 @@
                             Clean Database
                         </MudButton>
                         <MudButton StartIcon="@Icons.Material.Filled.Backup"
+                                 Disabled="_isBackupInProgress"
                                  OnClick="BackupDatabase">
                             Backup Database
                         </MudButton>
@@ -318,6 +323,20 @@
                             Clear Cache
                         </MudButton>
                     </MudButtonGroup>
+                </MudItem>
+                <MudItem xs="12" Class="mt-4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">Restore from Backup</MudText>
+                    <MudText Typo="Typo.caption" Class="mb-2">
+                        Upload a backup ZIP created by VideoJockey to replace the current database. A safety copy is stored automatically.
+                    </MudText>
+                    <InputFile @key="_restoreInputKey"
+                               OnChange="RestoreDatabase"
+                               Accept=".zip"
+                               Disabled="_isRestoreInProgress" />
+                    @if (_isRestoreInProgress)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+                    }
                 </MudItem>
                 <MudItem xs="12">
                     <MudDivider Class="my-4" />
@@ -381,6 +400,11 @@
     private int _logRetentionDays = 30;
     private bool _enableDebugLogging = false;
     private bool _enableAutoBackup = true;
+
+    private const long MaxBackupUploadBytes = 250L * 1024L * 1024L;
+    private bool _isBackupInProgress;
+    private bool _isRestoreInProgress;
+    private Guid _restoreInputKey = Guid.NewGuid();
     
     private class GenreMapping
     {
@@ -537,39 +561,100 @@
         _genreMappings.Remove(mapping);
     }
     
-    private async Task CleanupDatabase()
+    private Task CleanupDatabase()
     {
         // TODO: Implement database cleanup
         Snackbar.Add("Database cleanup started", Severity.Info);
+        return Task.CompletedTask;
     }
     
     private async Task BackupDatabase()
     {
-        // TODO: Implement database backup
-        Snackbar.Add("Database backup started", Severity.Info);
+        if (_isBackupInProgress)
+        {
+            Snackbar.Add("A database backup is already running", Severity.Info);
+            return;
+        }
+
+        _isBackupInProgress = true;
+
+        try
+        {
+            var result = await BackupService.CreateBackupAsync();
+            Snackbar.Add($"Backup created at {result.FilePath}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create backup: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isBackupInProgress = false;
+        }
     }
-    
-    private async Task RescanLibrary()
+
+    private async Task RestoreDatabase(InputFileChangeEventArgs args)
+    {
+        if (_isRestoreInProgress)
+        {
+            Snackbar.Add("A database restore is already running", Severity.Info);
+            return;
+        }
+
+        if (args.FileCount == 0 || args.File is null)
+        {
+            Snackbar.Add("No backup file selected", Severity.Warning);
+            return;
+        }
+
+        _isRestoreInProgress = true;
+
+        try
+        {
+            await using var stream = args.File.OpenReadStream(MaxBackupUploadBytes);
+            await BackupService.RestoreBackupAsync(stream);
+            Snackbar.Add("Database restored successfully. Restart the application to reload data.", Severity.Success);
+        }
+        catch (IOException ioEx)
+        {
+            Snackbar.Add($"File error during restore: {ioEx.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to restore database: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRestoreInProgress = false;
+            _restoreInputKey = Guid.NewGuid();
+        }
+    }
+
+    private Task RescanLibrary()
     {
         // TODO: Implement library rescan
         Snackbar.Add("Library rescan started", Severity.Info);
+        return Task.CompletedTask;
     }
     
-    private async Task ClearCache()
+    private Task ClearCache()
     {
         // TODO: Implement cache clearing
         Snackbar.Add("Cache cleared successfully", Severity.Success);
+        return Task.CompletedTask;
     }
     
-    private async Task ExportSettings()
+    private Task ExportSettings()
     {
         // TODO: Implement settings export
         Snackbar.Add("Settings export started", Severity.Info);
+        return Task.CompletedTask;
     }
     
-    private async Task ImportSettings()
+    private Task ImportSettings()
     {
         // TODO: Implement settings import
         Snackbar.Add("Settings import not yet implemented", Severity.Warning);
+        return Task.CompletedTask;
     }
 }

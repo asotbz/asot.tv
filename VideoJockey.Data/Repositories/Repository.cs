@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
+using VideoJockey.Core.Specifications;
 using VideoJockey.Data.Context;
+using VideoJockey.Data.Specifications;
 
 namespace VideoJockey.Data.Repositories
 {
@@ -48,6 +50,39 @@ namespace VideoJockey.Data.Repositories
         public IQueryable<T> GetQueryable()
         {
             return _dbSet.Where(e => e.IsActive).AsQueryable();
+        }
+
+        public async Task<IReadOnlyList<T>> ListAsync(ISpecification<T> specification)
+        {
+            if (specification == null)
+            {
+                throw new ArgumentNullException(nameof(specification));
+            }
+
+            var queryable = SpecificationEvaluator<T>.GetQuery(_dbSet.AsQueryable(), specification);
+            return await queryable.ToListAsync();
+        }
+
+        public async Task<T?> FirstOrDefaultAsync(ISpecification<T> specification)
+        {
+            if (specification == null)
+            {
+                throw new ArgumentNullException(nameof(specification));
+            }
+
+            var queryable = SpecificationEvaluator<T>.GetQuery(_dbSet.AsQueryable(), specification);
+            return await queryable.FirstOrDefaultAsync();
+        }
+
+        public async Task<int> CountAsync(ISpecification<T> specification)
+        {
+            if (specification == null)
+            {
+                throw new ArgumentNullException(nameof(specification));
+            }
+
+            var queryable = SpecificationEvaluator<T>.GetQuery(_dbSet.AsQueryable(), specification, ignoreIncludes: true, applyOrder: false);
+            return await queryable.CountAsync();
         }
 
         public async Task<T> AddAsync(T entity)

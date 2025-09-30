@@ -11,32 +11,32 @@ namespace VideoJockey.Core.Interfaces
         /// <summary>
         /// Adds a new download to the queue
         /// </summary>
-        Task<DownloadQueue> AddToQueueAsync(string url, string? customTitle = null, int priority = 0);
+        Task<DownloadQueueItem> AddToQueueAsync(string url, string? customTitle = null, int priority = 0);
         
         /// <summary>
         /// Gets all items in the queue
         /// </summary>
-        Task<List<DownloadQueue>> GetQueueAsync(bool includeCompleted = false);
+        Task<List<DownloadQueueItem>> GetQueueAsync(bool includeCompleted = false);
         
         /// <summary>
         /// Gets items pending download
         /// </summary>
-        Task<List<DownloadQueue>> GetPendingDownloadsAsync();
+        Task<List<DownloadQueueItem>> GetPendingDownloadsAsync();
         
         /// <summary>
         /// Updates the status of a queue item
         /// </summary>
-        Task UpdateStatusAsync(int queueId, DownloadStatus status, string? errorMessage = null);
+        Task UpdateStatusAsync(Guid queueId, DownloadStatus status, string? errorMessage = null);
         
         /// <summary>
         /// Updates download progress
         /// </summary>
-        Task UpdateProgressAsync(int queueId, double percentage, string? speed = null, string? eta = null);
+        Task UpdateProgressAsync(Guid queueId, double percentage, string? speed = null, string? eta = null);
         
         /// <summary>
         /// Removes an item from the queue
         /// </summary>
-        Task<bool> RemoveFromQueueAsync(int queueId);
+        Task<bool> RemoveFromQueueAsync(Guid queueId);
         
         /// <summary>
         /// Clears completed downloads from the queue
@@ -46,12 +46,12 @@ namespace VideoJockey.Core.Interfaces
         /// <summary>
         /// Retries a failed download
         /// </summary>
-        Task<bool> RetryDownloadAsync(int queueId);
+        Task<bool> RetryDownloadAsync(Guid queueId);
         
         /// <summary>
         /// Gets the next item to download based on priority
         /// </summary>
-        Task<DownloadQueue?> GetNextDownloadAsync();
+        Task<DownloadQueueItem?> GetNextDownloadAsync();
     }
     
     public enum DownloadStatus

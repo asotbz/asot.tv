@@ -1,12 +1,18 @@
 @page "/setup"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Web
 @using VideoJockey.Core.Entities
 @using VideoJockey.Core.Interfaces
+@using Microsoft.Extensions.Logging
 @using MudBlazor
 @inject IUnitOfWork UnitOfWork
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject ILogger<Setup> Logger
 
 <PageTitle>Initial Setup - VideoJockey</PageTitle>
+
+<MudPopoverProvider />
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
     <MudCard>
@@ -16,224 +22,228 @@
                 Let's configure your video library settings to get started.
             </MudText>
 
-            <MudStepper @ref="_stepper" @bind-ActiveStepIndex="_activeStepIndex">
-                <!-- Step 1: Library Settings -->
-                <MudStep Title="Library Settings">
-                    <ChildContent>
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_libraryPath" 
-                                            Label="Library Path" 
-                                            HelperText="Where your video files will be stored"
-                                            Variant="Variant.Outlined"
-                                            Adornment="Adornment.End"
-                                            AdornmentIcon="@Icons.Material.Filled.Folder"
-                                            FullWidth="true" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_downloadsPath" 
-                                            Label="Downloads Path" 
-                                            HelperText="Temporary location for downloads"
-                                            Variant="Variant.Outlined"
-                                            Adornment="Adornment.End"
-                                            AdornmentIcon="@Icons.Material.Filled.Download"
-                                            FullWidth="true" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_namingPattern" 
-                                            Label="File Naming Pattern" 
-                                            HelperText="How files should be organized (e.g., {artist}/{year} - {title}.{format})"
-                                            Variant="Variant.Outlined"
-                                            Lines="2"
-                                            FullWidth="true" />
-                            </MudItem>
-                        </MudGrid>
-                    </ChildContent>
-                </MudStep>
+            <!-- Progress Indicator -->
+            <MudProgressLinear Value="@(_currentStep * 25)" Class="mb-4" Color="Color.Primary" />
+            
+            <!-- Step Indicator -->
+            <MudText Typo="Typo.h6" Class="mb-4">
+                Step @_currentStep of 4: @GetStepTitle()
+            </MudText>
 
-                <!-- Step 2: Download Settings -->
-                <MudStep Title="Download Settings">
-                    <ChildContent>
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudSelect @bind-Value="_defaultVideoFormat" 
-                                         Label="Preferred Video Format"
-                                         Variant="Variant.Outlined"
-                                         HelperText="Default format for video downloads">
-                                    <MudSelectItem Value="@("mp4")">MP4 (Universal compatibility)</MudSelectItem>
-                                    <MudSelectItem Value="@("webm")">WebM (Better compression)</MudSelectItem>
-                                    <MudSelectItem Value="@("mkv")">MKV (Best quality)</MudSelectItem>
-                                    <MudSelectItem Value="@("best")">Best Available</MudSelectItem>
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSelect @bind-Value="_defaultVideoQuality" 
-                                         Label="Preferred Video Quality"
-                                         Variant="Variant.Outlined"
-                                         HelperText="Maximum video quality to download">
-                                    <MudSelectItem Value="@("2160p")">4K (2160p)</MudSelectItem>
-                                    <MudSelectItem Value="@("1440p")">2K (1440p)</MudSelectItem>
-                                    <MudSelectItem Value="@("1080p")">Full HD (1080p)</MudSelectItem>
-                                    <MudSelectItem Value="@("720p")">HD (720p)</MudSelectItem>
-                                    <MudSelectItem Value="@("480p")">SD (480p)</MudSelectItem>
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="12" sm="6">
-                                <MudNumericField @bind-Value="_maxConcurrentDownloads" 
-                                               Label="Max Concurrent Downloads" 
-                                               Min="1" Max="10"
-                                               Variant="Variant.Outlined"
-                                               HelperText="Number of simultaneous downloads" />
-                            </MudItem>
-                            <MudItem xs="12" sm="6">
-                                <MudNumericField @bind-Value="_downloadRetries" 
-                                               Label="Download Retries" 
-                                               Min="0" Max="10"
-                                               Variant="Variant.Outlined"
-                                               HelperText="Retry attempts for failed downloads" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudCheckBox @bind-Value="_extractMetadata" 
-                                           Label="Extract metadata from downloads" 
-                                           Color="Color.Primary" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudCheckBox @bind-Value="_generateNfo" 
-                                           Label="Generate NFO files for media center compatibility" 
-                                           Color="Color.Primary" />
-                            </MudItem>
-                        </MudGrid>
-                    </ChildContent>
-                </MudStep>
+            <!-- Step 1: Library Settings -->
+            @if (_currentStep == 1)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_libraryPath" 
+                                    Label="Library Path" 
+                                    HelperText="Where your video files will be stored"
+                                    Variant="Variant.Outlined"
+                                    Adornment="Adornment.End"
+                                    AdornmentIcon="@Icons.Material.Filled.Folder"
+                                    FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_downloadsPath" 
+                                    Label="Downloads Path" 
+                                    HelperText="Temporary location for downloads"
+                                    Variant="Variant.Outlined"
+                                    Adornment="Adornment.End"
+                                    AdornmentIcon="@Icons.Material.Filled.Download"
+                                    FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_namingPattern" 
+                                    Label="File Naming Pattern" 
+                                    HelperText="How files should be organized (e.g., {artist}/{year} - {title}.{format})"
+                                    Variant="Variant.Outlined"
+                                    Lines="2"
+                                    FullWidth="true" />
+                    </MudItem>
+                </MudGrid>
+            }
 
-                <!-- Step 3: API Settings -->
-                <MudStep Title="API Settings (Optional)">
-                    <ChildContent>
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudAlert Severity="Severity.Info" Class="mb-4">
-                                    These settings are optional. You can configure them later if needed.
-                                </MudAlert>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_imvdbApiKey" 
-                                            Label="IMVDb API Key" 
-                                            HelperText="For fetching music video metadata"
-                                            Variant="Variant.Outlined"
-                                            InputType="InputType.Password"
-                                            Adornment="Adornment.End"
-                                            AdornmentIcon="@Icons.Material.Filled.Key"
-                                            FullWidth="true" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_musicBrainzUserAgent" 
-                                            Label="MusicBrainz User Agent" 
-                                            HelperText="Your app identifier for MusicBrainz API"
-                                            Variant="Variant.Outlined"
-                                            FullWidth="true" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudCheckBox @bind-Value="_enableOnlineMetadata" 
-                                           Label="Enable online metadata fetching" 
-                                           Color="Color.Primary" />
-                            </MudItem>
-                        </MudGrid>
-                    </ChildContent>
-                </MudStep>
+            <!-- Step 2: Download Settings -->
+            @if (_currentStep == 2)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_defaultVideoFormat" 
+                                 Label="Preferred Video Format"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Default format for video downloads">
+                            <MudSelectItem Value="@("mp4")">MP4 (Universal compatibility)</MudSelectItem>
+                            <MudSelectItem Value="@("webm")">WebM (Better compression)</MudSelectItem>
+                            <MudSelectItem Value="@("mkv")">MKV (Best quality)</MudSelectItem>
+                            <MudSelectItem Value="@("best")">Best Available</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_defaultVideoQuality" 
+                                 Label="Preferred Video Quality"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Maximum video quality to download">
+                            <MudSelectItem Value="@("2160p")">4K (2160p)</MudSelectItem>
+                            <MudSelectItem Value="@("1440p")">2K (1440p)</MudSelectItem>
+                            <MudSelectItem Value="@("1080p")">Full HD (1080p)</MudSelectItem>
+                            <MudSelectItem Value="@("720p")">HD (720p)</MudSelectItem>
+                            <MudSelectItem Value="@("480p")">SD (480p)</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_maxConcurrentDownloads" 
+                                       Label="Max Concurrent Downloads" 
+                                       Min="1" Max="10"
+                                       Variant="Variant.Outlined"
+                                       HelperText="Number of simultaneous downloads" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_downloadRetries" 
+                                       Label="Download Retries" 
+                                       Min="0" Max="10"
+                                       Variant="Variant.Outlined"
+                                       HelperText="Retry attempts for failed downloads" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudCheckBox @bind-Value="_extractMetadata" 
+                                   Label="Extract metadata from downloads" 
+                                   Color="Color.Primary" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudCheckBox @bind-Value="_generateNfo" 
+                                   Label="Generate NFO files for media center compatibility" 
+                                   Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+            }
 
-                <!-- Step 4: Review Settings -->
-                <MudStep Title="Review & Complete">
-                    <ChildContent>
-                        <MudGrid>
-                            <MudItem xs="12">
-                                <MudText Typo="Typo.h6" Class="mb-4">Review Your Settings</MudText>
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSimpleTable Hover="true" Bordered="true" Dense="true">
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>Library Path</strong></td>
-                                            <td>@_libraryPath</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Downloads Path</strong></td>
-                                            <td>@_downloadsPath</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Naming Pattern</strong></td>
-                                            <td>@_namingPattern</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Video Format</strong></td>
-                                            <td>@_defaultVideoFormat</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Video Quality</strong></td>
-                                            <td>@_defaultVideoQuality</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Concurrent Downloads</strong></td>
-                                            <td>@_maxConcurrentDownloads</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Extract Metadata</strong></td>
-                                            <td>@(_extractMetadata ? "Yes" : "No")</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Generate NFO Files</strong></td>
-                                            <td>@(_generateNfo ? "Yes" : "No")</td>
-                                        </tr>
-                                    </tbody>
-                                </MudSimpleTable>
-                            </MudItem>
-                            <MudItem xs="12" Class="mt-4">
-                                <MudButton Variant="Variant.Filled" 
-                                         Color="Color.Success" 
-                                         StartIcon="@Icons.Material.Filled.Save"
-                                         FullWidth="true"
-                                         OnClick="CompleteSetup"
-                                         Disabled="@_isSaving">
-                                    @if (_isSaving)
-                                    {
-                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                                        <span>Saving...</span>
-                                    }
-                                    else
-                                    {
-                                        <span>Complete Setup</span>
-                                    }
-                                </MudButton>
-                            </MudItem>
-                        </MudGrid>
-                    </ChildContent>
-                </MudStep>
-            </MudStepper>
+            <!-- Step 3: API Settings -->
+            @if (_currentStep == 3)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Class="mb-4">
+                            These settings are optional. You can configure them later if needed.
+                        </MudAlert>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_imvdbApiKey" 
+                                    Label="IMVDb API Key" 
+                                    HelperText="For fetching music video metadata"
+                                    Variant="Variant.Outlined"
+                                    InputType="InputType.Password"
+                                    Adornment="Adornment.End"
+                                    AdornmentIcon="@Icons.Material.Filled.Key"
+                                    FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_musicBrainzUserAgent" 
+                                    Label="MusicBrainz User Agent" 
+                                    HelperText="Your app identifier for MusicBrainz API"
+                                    Variant="Variant.Outlined"
+                                    FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudCheckBox @bind-Value="_enableOnlineMetadata" 
+                                   Label="Enable online metadata fetching" 
+                                   Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+            }
 
+            <!-- Step 4: Review Settings -->
+            @if (_currentStep == 4)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.h6" Class="mb-4">Review Your Settings</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSimpleTable Hover="true" Bordered="true" Dense="true">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Library Path</strong></td>
+                                    <td>@_libraryPath</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Downloads Path</strong></td>
+                                    <td>@_downloadsPath</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Naming Pattern</strong></td>
+                                    <td>@_namingPattern</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Video Format</strong></td>
+                                    <td>@_defaultVideoFormat</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Video Quality</strong></td>
+                                    <td>@_defaultVideoQuality</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Concurrent Downloads</strong></td>
+                                    <td>@_maxConcurrentDownloads</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Extract Metadata</strong></td>
+                                    <td>@(_extractMetadata ? "Yes" : "No")</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Generate NFO Files</strong></td>
+                                    <td>@(_generateNfo ? "Yes" : "No")</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <!-- Navigation Buttons -->
             <MudGrid Class="mt-4">
                 <MudItem xs="6">
-                    <MudButton Variant="Variant.Text"
-                             Disabled="@(_activeStepIndex == 0)"
-                             OnClick="PreviousStep">
-                        Previous
-                    </MudButton>
+                    @if (_currentStep > 1)
+                    {
+                        <MudButton Variant="Variant.Text" ButtonType="ButtonType.Button" OnClick="@PreviousStep">
+                            Previous
+                        </MudButton>
+                    }
                 </MudItem>
                 <MudItem xs="6" Class="d-flex justify-end">
-                    <MudButton Variant="Variant.Filled"
-                             Color="Color.Primary"
-                             Disabled="@(_activeStepIndex == 3)"
-                             OnClick="NextStep">
-                        Next
-                    </MudButton>
+                    @if (_currentStep < 4)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" ButtonType="ButtonType.Button" OnClick="@NextStep">
+                            Next
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled" 
+                                 Color="Color.Success" 
+                                 StartIcon="@Icons.Material.Filled.Save"
+                                 OnClick="CompleteSetup"
+                                 Disabled="@_isSaving">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Complete Setup</span>
+                            }
+                        </MudButton>
+                    }
                 </MudItem>
             </MudGrid>
+
         </MudCardContent>
     </MudCard>
 </MudContainer>
 
 @code {
-    private MudStepper? _stepper;
-    private int _activeStepIndex = 0;
     private bool _isSaving = false;
+    private int _currentStep = 1;
     
     // Library Settings
     private string _libraryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "VideoJockey", "Library");
@@ -255,12 +265,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Logger.LogInformation("Setup component initialized at step {Step}", _currentStep);
+
         // Check if setup has already been completed
         var setupComplete = await UnitOfWork.Configurations
             .FirstOrDefaultAsync(c => c.Key == "SetupComplete" && c.Category == "System");
-            
+        
         if (setupComplete?.Value == "true")
         {
+            Logger.LogInformation("Setup already completed; redirecting to home.");
             Navigation.NavigateTo("/");
         }
     }
@@ -399,19 +412,45 @@
         }
     }
 
-    private void NextStep()
+    private void NextStep(MouseEventArgs _)
     {
-        if (_activeStepIndex < 3)
+        Logger.LogInformation("NextStep invoked while on step {Step}", _currentStep);
+
+        if (_currentStep < 4)
         {
-            _activeStepIndex++;
+            _currentStep++;
+            Logger.LogInformation("Advanced to step {Step}", _currentStep);
+        }
+        else
+        {
+            Logger.LogInformation("NextStep ignored because current step is at maximum ({Step})", _currentStep);
         }
     }
 
-    private void PreviousStep()
+    private void PreviousStep(MouseEventArgs _)
     {
-        if (_activeStepIndex > 0)
+        Logger.LogInformation("PreviousStep invoked while on step {Step}", _currentStep);
+
+        if (_currentStep > 1)
         {
-            _activeStepIndex--;
+            _currentStep--;
+            Logger.LogInformation("Returned to step {Step}", _currentStep);
         }
+        else
+        {
+            Logger.LogInformation("PreviousStep ignored because current step is at minimum ({Step})", _currentStep);
+        }
+    }
+
+    private string GetStepTitle()
+    {
+        return _currentStep switch
+        {
+            1 => "Library Settings",
+            2 => "Download Settings",
+            3 => "API Settings (Optional)",
+            4 => "Review & Complete",
+            _ => ""
+        };
     }
 }

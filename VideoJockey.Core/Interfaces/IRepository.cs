@@ -4,6 +4,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using VideoJockey.Core.Entities;
+using VideoJockey.Core.Specifications;
 
 namespace VideoJockey.Core.Interfaces
 {
@@ -37,6 +38,21 @@ namespace VideoJockey.Core.Interfaces
         /// Get a queryable for complex queries
         /// </summary>
         IQueryable<T> GetQueryable();
+
+        /// <summary>
+        /// Executes a specification and returns the matching entities.
+        /// </summary>
+        Task<IReadOnlyList<T>> ListAsync(ISpecification<T> specification);
+
+        /// <summary>
+        /// Returns the first entity that matches the specification or null.
+        /// </summary>
+        Task<T?> FirstOrDefaultAsync(ISpecification<T> specification);
+
+        /// <summary>
+        /// Returns the count of entities matching the specification.
+        /// </summary>
+        Task<int> CountAsync(ISpecification<T> specification);
 
         /// <summary>
         /// Add a new entity

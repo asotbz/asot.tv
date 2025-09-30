@@ -1,14 +1,36 @@
 @page "/videos"
 @using VideoJockey.Core.Entities
 @using VideoJockey.Core.Interfaces
+@using VideoJockey.Core.Specifications
+@using VideoJockey.Core.Specifications.Queries
 @using VideoJockey.Web.Components.Shared
+@using VideoJockey.Web.Components.Dialogs
+@using VideoJockey.Services
+@using VideoJockey.Services.Interfaces
+@using VideoJockey.Web.Services
 @using MudBlazor
+@using static VideoJockey.Services.Interfaces.IPlaylistService
 @inject IUnitOfWork UnitOfWork
+@inject IVideoService VideoService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject BulkOrganizeService OrganizeService
+@inject INfoExportService NfoExportService
+@inject IThumbnailService ThumbnailService
+@inject IPlaylistService PlaylistService
+@inject KeyboardShortcutService KeyboardService
+@inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Videos - VideoJockey</PageTitle>
+
+<!-- Context Menu Component -->
+<VideoContextMenu @ref="_contextMenu"
+                  Video="@_contextMenuVideo"
+                  SessionId="@_currentPlaylistSession?.SessionId"
+                  OnVideoDeleted="OnVideoDeleted"
+                  OnVideoUpdated="OnVideoUpdated" />
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudGrid>
@@ -28,18 +50,18 @@
                                         Variant="Variant.Outlined"
                                         Adornment="Adornment.Start"
                                         AdornmentIcon="@Icons.Material.Filled.Search"
-                                        OnKeyUp="@(async (e) => { if (e.Key == "Enter") await SearchVideos(); })"
+                                        OnKeyUp="@(async (e) => { if (e.Key == "Enter") await SearchVideos(resetPage: true); })"
                                         Immediate="false" />
                         </MudItem>
                         <MudItem xs="12" md="2">
-                            <MudSelect @bind-Value="_selectedGenre" 
+                            <MudSelect T="Guid?" @bind-Value="_selectedGenreId" 
                                      Label="Genre" 
                                      Variant="Variant.Outlined"
                                      AnchorOrigin="Origin.BottomCenter">
-                                <MudSelectItem Value="@("")">All Genres</MudSelectItem>
+                                <MudSelectItem Value="@((Guid?)null)">All Genres</MudSelectItem>
                                 @foreach (var genre in _genres)
                                 {
-                                    <MudSelectItem Value="@genre">@genre</MudSelectItem>
+                                    <MudSelectItem Value="@genre.Id">@genre.Name</MudSelectItem>
                                 }
                             </MudSelect>
                         </MudItem>
@@ -70,7 +92,7 @@
                         <MudItem xs="12" md="2" Class="d-flex align-center">
                             <MudButton Variant="Variant.Filled" 
                                      Color="Color.Primary" 
-                                     OnClick="SearchVideos"
+                                     OnClick="@(() => SearchVideos(resetPage: true))"
                                      StartIcon="@Icons.Material.Filled.Search"
                                      FullWidth="true">
                                 Search
@@ -92,12 +114,13 @@
                                                Color="Color.Primary"
                                                Variant="Variant.Outlined" />
                                     }
-                                    <MudChip T="string"
-                                           Text="Clear All"
-                                           Icon="@Icons.Material.Filled.Clear"
-                                           Color="Color.Error"
-                                           Variant="Variant.Filled"
-                                           OnClick="ClearFilters" />
+                                    <MudButton Variant="Variant.Filled"
+                                             Color="Color.Error"
+                                             Size="Size.Small"
+                                             StartIcon="@Icons.Material.Filled.Clear"
+                                             OnClick="ClearFilters">
+                                        Clear All
+                                    </MudButton>
                                 </MudChipSet>
                             </MudItem>
                         </MudGrid>
@@ -123,14 +146,47 @@
                     </MudButtonGroup>
                 </MudItem>
                 <MudItem xs="6" Class="d-flex justify-end">
-                    <MudButton Variant="Variant.Filled" 
-                             Color="Color.Success" 
+                    @if (_selectedVideos.Any())
+                    {
+                        <MudChip T="string" Text="@($"{_selectedVideos.Count} selected")" Color="Color.Info" Variant="Variant.Filled" />
+                        <MudButton Variant="Variant.Outlined"
+                                 Color="Color.Warning"
+                                 StartIcon="@Icons.Material.Filled.FolderOpen"
+                                 OnClick="OpenOrganizeDialog"
+                                 Class="ml-2">
+                            Organize
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                 Color="Color.Primary"
+                                 StartIcon="@Icons.Material.Filled.Label"
+                                 OnClick="OpenTagEditDialog"
+                                 Class="ml-2">
+                            Edit Tags
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                 Color="Color.Success"
+                                 StartIcon="@Icons.Material.Filled.Description"
+                                 OnClick="OpenNfoExportDialog"
+                                 Class="ml-2">
+                            Export NFO
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                 Color="Color.Secondary"
+                                 StartIcon="@Icons.Material.Filled.Clear"
+                                 OnClick="ClearSelection"
+                                 Class="ml-2">
+                            Clear Selection
+                        </MudButton>
+                        <MudDivider Vertical="true" FlexItem="true" Class="mx-2" />
+                    }
+                    <MudButton Variant="Variant.Filled"
+                             Color="Color.Success"
                              StartIcon="@Icons.Material.Filled.Add"
                              OnClick="OpenAddVideoDialog">
                         Add Video
                     </MudButton>
-                    <MudButton Variant="Variant.Outlined" 
-                             Color="Color.Primary" 
+                    <MudButton Variant="Variant.Outlined"
+                             Color="Color.Primary"
                              StartIcon="@Icons.Material.Filled.Download"
                              OnClick="@(() => Navigation.NavigateTo("/downloads"))"
                              Class="ml-2">
@@ -155,7 +211,7 @@
                                Color="Color.Default" />
                         <MudText Typo="Typo.h5" Class="mt-4">No Videos Found</MudText>
                         <MudText Typo="Typo.body1" Class="mt-2">
-                            @if (string.IsNullOrEmpty(_searchTerm) && string.IsNullOrEmpty(_selectedGenre) && _selectedYear == 0)
+                            @if (string.IsNullOrEmpty(_searchTerm) && !_selectedGenreId.HasValue && _selectedYear == 0)
                             {
                                 <text>Your video library is empty. Start by adding some videos!</text>
                             }
@@ -183,7 +239,17 @@
                             @foreach (var video in _videos)
                             {
                                 <MudItem xs="12" sm="6" md="4" lg="3">
-                                    <MudCard Class="video-card" @onclick="@(() => OpenVideoDetails(video))">
+                                    <MudCard Class="@($"video-card {(IsVideoSelected(video) ? "selected" : "")}")"
+                                            @onclick="@(() => OpenVideoDetails(video))"
+                                            @oncontextmenu="@(async (e) => await HandleContextMenu(e, video))">
+                                        <MudCardHeader Class="pa-2">
+                                            <CardHeaderContent>
+                                                <MudCheckBox T="bool"
+                                                           Value="@IsVideoSelected(video)"
+                                                           ValueChanged="@((bool val) => ToggleVideoSelection(video))"
+                                                           Color="Color.Primary" />
+                                            </CardHeaderContent>
+                                        </MudCardHeader>
                                         <MudCardMedia Image="@GetThumbnailUrl(video)" Height="200" />
                                         <MudCardContent>
                                             <MudText Typo="Typo.h6" Class="text-truncate">@video.Title</MudText>
@@ -191,18 +257,33 @@
                                             <MudText Typo="Typo.caption">@video.Year · @FormatDuration(video.Duration)</MudText>
                                         </MudCardContent>
                                         <MudCardActions>
-                                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
-                                                         Color="Color.Primary" 
+                                            <MudTooltip Text="Play Now">
+                                                <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                                             Color="Color.Primary"
+                                                             Size="Size.Small"
+                                                             OnClick="@((e) => PlayVideoWithStop(video, e))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Play Next">
+                                                <MudIconButton Icon="@Icons.Material.Filled.SkipNext"
+                                                             Color="Color.Secondary"
+                                                             Size="Size.Small"
+                                                             OnClick="@(async (e) => await PlayNextWithStop(video, e))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Add to Queue">
+                                                <MudIconButton Icon="@Icons.Material.Filled.PlaylistAdd"
+                                                             Color="Color.Info"
+                                                             Size="Size.Small"
+                                                             OnClick="@(async (e) => await AddToQueueWithStop(video, e))" />
+                                            </MudTooltip>
+                                            <MudSpacer />
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                         Color="Color.Default"
                                                          Size="Size.Small"
-                                                         OnClick="@(() => PlayVideo(video))" />
-                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                                         Color="Color.Default" 
+                                                         OnClick="@((e) => EditVideoWithStop(video, e))" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                         Color="Color.Error"
                                                          Size="Size.Small"
-                                                         OnClick="@(() => EditVideo(video))" />
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                                         Color="Color.Error" 
-                                                         Size="Size.Small"
-                                                         OnClick="@(async () => await DeleteVideo(video))" />
+                                                         OnClick="@(async (e) => await DeleteVideoWithStop(video, e))" />
                                         </MudCardActions>
                                     </MudCard>
                                 </MudItem>
@@ -211,8 +292,20 @@
                         break;
                         
                     case ViewMode.List:
-                        <MudTable Items="@_videos" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_isLoading">
+                        <MudTable Items="@_videos"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Loading="@_isLoading"
+                                 MultiSelection="true"
+                                 @bind-SelectedItems="_selectedVideos"
+                                 RowClassFunc="@((item, index) => "")"
+                                 OnRowContextMenu="OnTableRowContextMenu">
                             <HeaderContent>
+                                <MudTh>
+                                    <MudCheckBox T="bool"
+                                               Value="@(_selectedVideos.Count == _videos.Count && _videos.Any())"
+                                               ValueChanged="@(val => SelectAll(val))" />
+                                </MudTh>
                                 <MudTh>Title</MudTh>
                                 <MudTh>Artist</MudTh>
                                 <MudTh>Album</MudTh>
@@ -222,6 +315,12 @@
                                 <MudTh>Actions</MudTh>
                             </HeaderContent>
                             <RowTemplate>
+                                <MudTd DataLabel="Select">
+                                    <MudCheckBox T="bool"
+                                               Value="@IsVideoSelected(context)"
+                                               ValueChanged="@((bool val) => ToggleVideoSelection(context))"
+                                               Color="Color.Primary" />
+                                </MudTd>
                                 <MudTd DataLabel="Title">@context.Title</MudTd>
                                 <MudTd DataLabel="Artist">@context.Artist</MudTd>
                                 <MudTd DataLabel="Album">@context.Album</MudTd>
@@ -229,16 +328,30 @@
                                 <MudTd DataLabel="Duration">@FormatDuration(context.Duration)</MudTd>
                                 <MudTd DataLabel="Format">@context.Format</MudTd>
                                 <MudTd DataLabel="Actions">
-                                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
-                                                 Color="Color.Primary" 
-                                                 Size="Size.Small"
-                                                 OnClick="@(() => PlayVideo(context))" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                                 Color="Color.Default" 
+                                    <MudTooltip Text="Play Now">
+                                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                                     Color="Color.Primary"
+                                                     Size="Size.Small"
+                                                     OnClick="@(() => PlayVideo(context))" />
+                                    </MudTooltip>
+                                    <MudTooltip Text="Play Next">
+                                        <MudIconButton Icon="@Icons.Material.Filled.SkipNext"
+                                                     Color="Color.Secondary"
+                                                     Size="Size.Small"
+                                                     OnClick="@(async () => await PlayNext(context))" />
+                                    </MudTooltip>
+                                    <MudTooltip Text="Add to Queue">
+                                        <MudIconButton Icon="@Icons.Material.Filled.PlaylistAdd"
+                                                     Color="Color.Info"
+                                                     Size="Size.Small"
+                                                     OnClick="@(async () => await AddToQueue(context))" />
+                                    </MudTooltip>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                 Color="Color.Default"
                                                  Size="Size.Small"
                                                  OnClick="@(() => EditVideo(context))" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                                 Color="Color.Error" 
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                 Color="Color.Error"
                                                  Size="Size.Small"
                                                  OnClick="@(async () => await DeleteVideo(context))" />
                                 </MudTd>
@@ -254,12 +367,19 @@
                             @foreach (var video in _videos)
                             {
                                 <MudItem xs="12" md="6">
-                                    <MudCard>
+                                    <MudCard Class="@($"video-card {(IsVideoSelected(video) ? "selected" : "")}")"
+                                            @oncontextmenu="@(async (e) => await HandleContextMenu(e, video))">
                                         <MudCardContent>
                                             <MudGrid>
-                                                <MudItem xs="4">
-                                                    <img src="@GetThumbnailUrl(video)" 
-                                                         alt="@video.Title" 
+                                                <MudItem xs="1" Class="d-flex align-center">
+                                                    <MudCheckBox T="bool"
+                                                               Value="@IsVideoSelected(video)"
+                                                               ValueChanged="@((bool val) => ToggleVideoSelection(video))"
+                                                               Color="Color.Primary" />
+                                                </MudItem>
+                                                <MudItem xs="3">
+                                                    <img src="@GetThumbnailUrl(video)"
+                                                         alt="@video.Title"
                                                          style="width: 100%; height: auto; border-radius: 4px;" />
                                                 </MudItem>
                                                 <MudItem xs="8">
@@ -282,21 +402,33 @@
                                             </MudGrid>
                                         </MudCardContent>
                                         <MudCardActions>
-                                            <MudButton Color="Color.Primary" 
+                                            <MudButton Color="Color.Primary"
                                                      Variant="Variant.Text"
                                                      StartIcon="@Icons.Material.Filled.PlayArrow"
                                                      OnClick="@(() => PlayVideo(video))">
                                                 Play
                                             </MudButton>
-                                            <MudButton Color="Color.Default" 
+                                            <MudButton Color="Color.Secondary"
+                                                     Variant="Variant.Text"
+                                                     StartIcon="@Icons.Material.Filled.SkipNext"
+                                                     OnClick="@(async () => await PlayNext(video))">
+                                                Play Next
+                                            </MudButton>
+                                            <MudButton Color="Color.Info"
+                                                     Variant="Variant.Text"
+                                                     StartIcon="@Icons.Material.Filled.PlaylistAdd"
+                                                     OnClick="@(async () => await AddToQueue(video))">
+                                                Add to Queue
+                                            </MudButton>
+                                            <MudSpacer />
+                                            <MudButton Color="Color.Default"
                                                      Variant="Variant.Text"
                                                      StartIcon="@Icons.Material.Filled.Edit"
                                                      OnClick="@(() => EditVideo(video))">
                                                 Edit
                                             </MudButton>
-                                            <MudSpacer />
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                                         Color="Color.Error" 
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                         Color="Color.Error"
                                                          Size="Size.Small"
                                                          OnClick="@(async () => await DeleteVideo(video))" />
                                         </MudCardActions>
@@ -335,6 +467,10 @@
         transform: translateY(-4px);
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     }
+    
+    .video-card.selected {
+        border: 2px solid var(--mud-palette-primary);
+    }
 </style>
 
 @code {
@@ -345,13 +481,20 @@
         Card
     }
     
+    private sealed class GenreOption
+    {
+        public Guid Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+    }
+
     private List<Video> _videos = new();
-    private List<string> _genres = new();
+    private HashSet<Video> _selectedVideos = new();
+    private List<GenreOption> _genres = new();
     private List<int> _years = new();
     private Dictionary<string, string> _activeFilters = new();
-    
+
     private string _searchTerm = "";
-    private string _selectedGenre = "";
+    private Guid? _selectedGenreId;
     private int _selectedYear = 0;
     private string _sortBy = "DateAdded";
     private ViewMode _viewMode = ViewMode.Grid;
@@ -360,24 +503,59 @@
     private int _currentPage = 1;
     private int _pageSize = 24;
     private int _totalPages = 1;
+    private PlaylistSession? _currentPlaylistSession;
+    private VideoContextMenu? _contextMenu;
+    private Video? _contextMenuVideo;
+    
     
     protected override async Task OnInitializedAsync()
     {
+        // Register keyboard shortcuts
+        RegisterKeyboardShortcuts();
+        
         await LoadFilters();
-        await SearchVideos();
+        await SearchVideos(resetPage: true);
+        
+        // Check if there's an active playlist session in the query params
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("session", out var sessionStr) && Guid.TryParse(sessionStr, out var sessionId))
+        {
+            _currentPlaylistSession = await PlaylistService.GetSessionAsync(sessionId);
+        }
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize context menu prevention for video cards
+            await JS.InvokeVoidAsync("contextMenuHelpers.preventDefaultContextMenu");
+        }
+    }
+    
+    private void RegisterKeyboardShortcuts()
+    {
+        KeyboardService.RegisterShortcut("Ctrl+F", "Videos", FocusSearch);
+        KeyboardService.RegisterShortcut("Ctrl+A", "Videos", SelectAllShortcut);
+        KeyboardService.RegisterShortcut("Delete", "Videos", DeleteSelected);
+        KeyboardService.RegisterShortcut("Ctrl+P", "Videos", PlaySelected);
+        KeyboardService.RegisterShortcut("Ctrl+O", "Videos", OrganizeSelected);
+        KeyboardService.RegisterShortcut("Ctrl+E", "Videos", EditTagsSelected);
     }
     
     private async Task LoadFilters()
     {
-        // Load distinct genres
-        var allVideos = await UnitOfWork.Videos.GetAllAsync();
+        var allVideos = await VideoService.GetAllVideosAsync();
+
         _genres = allVideos
-            .SelectMany(v => v.Genres?.Select(g => g.Name) ?? Enumerable.Empty<string>())
-            .Distinct()
-            .OrderBy(g => g)
+            .SelectMany(v => v.Genres ?? Enumerable.Empty<Genre>())
+            .Where(g => !string.IsNullOrWhiteSpace(g.Name))
+            .GroupBy(g => g.Id)
+            .Select(g => new GenreOption { Id = g.Key, Name = g.First().Name })
+            .OrderBy(g => g.Name)
             .ToList();
-        
-        // Load distinct years
+
         _years = allVideos
             .Where(v => v.Year.HasValue)
             .Select(v => v.Year!.Value)
@@ -386,71 +564,87 @@
             .ToList();
     }
     
-    private async Task SearchVideos()
+    private async Task SearchVideos(bool resetPage = false)
     {
+        if (resetPage)
+        {
+            _currentPage = 1;
+        }
+
         _isLoading = true;
         _activeFilters.Clear();
-        
+
         try
         {
-            // Build query
-            var query = await UnitOfWork.Videos.GetAllAsync();
-            
-            // Apply search term
-            if (!string.IsNullOrWhiteSpace(_searchTerm))
+            var (sortOption, sortDirection) = GetSortSettings();
+            var requestedPage = Math.Max(_currentPage, 1);
+
+            var query = new VideoQuery
             {
-                var searchLower = _searchTerm.ToLower();
-                query = query.Where(v => 
-                    v.Title.ToLower().Contains(searchLower) ||
-                    (v.Artist != null && v.Artist.ToLower().Contains(searchLower)) ||
-                    (v.Album != null && v.Album.ToLower().Contains(searchLower)));
-                _activeFilters["Search"] = _searchTerm;
-            }
-            
-            // Apply genre filter
-            if (!string.IsNullOrEmpty(_selectedGenre))
+                Search = string.IsNullOrWhiteSpace(_searchTerm) ? null : _searchTerm.Trim(),
+                Page = requestedPage,
+                PageSize = _pageSize,
+                SortBy = sortOption,
+                SortDirection = sortDirection
+            };
+
+            if (_selectedGenreId.HasValue)
             {
-                query = query.Where(v => v.Genres != null && v.Genres.Any(g => g.Name == _selectedGenre));
-                _activeFilters["Genre"] = _selectedGenre;
+                query.GenreIds.Add(_selectedGenreId.Value);
+                var genreName = _genres.FirstOrDefault(g => g.Id == _selectedGenreId.Value)?.Name;
+                if (!string.IsNullOrWhiteSpace(genreName))
+                {
+                    _activeFilters["Genre"] = genreName;
+                }
             }
-            
-            // Apply year filter
+
             if (_selectedYear > 0)
             {
-                query = query.Where(v => v.Year == _selectedYear);
+                query.YearFrom = _selectedYear;
+                query.YearTo = _selectedYear;
                 _activeFilters["Year"] = _selectedYear.ToString();
             }
-            
-            // Apply sorting
-            query = _sortBy switch
+
+            if (!string.IsNullOrWhiteSpace(_searchTerm))
             {
-                "Title" => query.OrderBy(v => v.Title),
-                "Artist" => query.OrderBy(v => v.Artist ?? ""),
-                "Year" => query.OrderByDescending(v => v.Year ?? 0),
-                "Duration" => query.OrderByDescending(v => v.Duration),
-                _ => query.OrderByDescending(v => v.CreatedAt)
-            };
-            
-            // Calculate pagination
-            var totalItems = query.Count();
-            _totalPages = (int)Math.Ceiling(totalItems / (double)_pageSize);
-            
-            // Apply pagination
-            _videos = query
-                .Skip((_currentPage - 1) * _pageSize)
-                .Take(_pageSize)
-                .ToList();
+                _activeFilters["Search"] = _searchTerm;
+            }
+
+            var result = await VideoService.GetVideosAsync(query);
+
+            if (result.TotalPages > 0 && requestedPage > result.TotalPages)
+            {
+                _currentPage = result.TotalPages;
+                await SearchVideos();
+                return;
+            }
+
+            _videos = result.Items.ToList();
+            _totalPages = result.TotalPages > 0 ? result.TotalPages : 1;
+            _currentPage = Math.Min(result.Page, _totalPages);
         }
         finally
         {
             _isLoading = false;
         }
     }
+
+    private (VideoSortOption SortBy, VideoJockey.Core.Specifications.SortDirection Direction) GetSortSettings()
+    {
+        return _sortBy switch
+        {
+            "Title" => (VideoSortOption.Title, VideoJockey.Core.Specifications.SortDirection.Ascending),
+            "Artist" => (VideoSortOption.Artist, VideoJockey.Core.Specifications.SortDirection.Ascending),
+            "Year" => (VideoSortOption.Year, VideoJockey.Core.Specifications.SortDirection.Descending),
+            "Duration" => (VideoSortOption.Duration, VideoJockey.Core.Specifications.SortDirection.Descending),
+            _ => (VideoSortOption.CreatedAt, VideoJockey.Core.Specifications.SortDirection.Descending)
+        };
+    }
     
     private void OnPageChanged(int page)
     {
         _currentPage = page;
-        InvokeAsync(SearchVideos);
+        InvokeAsync(() => SearchVideos());
     }
     
     private void RemoveFilter(MudChip<string> chip)
@@ -464,22 +658,22 @@
                     _searchTerm = "";
                     break;
                 case "Genre":
-                    _selectedGenre = "";
+                    _selectedGenreId = null;
                     break;
                 case "Year":
                     _selectedYear = 0;
                     break;
             }
-            InvokeAsync(SearchVideos);
+            InvokeAsync(() => SearchVideos(resetPage: true));
         }
     }
     
     private void ClearFilters()
     {
         _searchTerm = "";
-        _selectedGenre = "";
+        _selectedGenreId = null;
         _selectedYear = 0;
-        InvokeAsync(SearchVideos);
+        InvokeAsync(() => SearchVideos(resetPage: true));
     }
     
     private string GetFilterIcon(string filterType)
@@ -495,8 +689,7 @@
     
     private string GetThumbnailUrl(Video video)
     {
-        // TODO: Implement actual thumbnail logic
-        return video.ThumbnailPath ?? "/images/video-placeholder.png";
+        return ThumbnailService.GetThumbnailUrl(video);
     }
     
     private string FormatDuration(int? seconds)
@@ -511,10 +704,11 @@
         return $"{duration.Minutes}:{duration.Seconds:D2}";
     }
     
-    private async Task OpenAddVideoDialog()
+    private Task OpenAddVideoDialog()
     {
         // TODO: Implement add video dialog
         Navigation.NavigateTo("/downloads");
+        return Task.CompletedTask;
     }
     
     private void OpenVideoDetails(Video video)
@@ -522,15 +716,71 @@
         Navigation.NavigateTo($"/videos/{video.Id}");
     }
     
-    private void PlayVideo(Video video)
+    private async Task PlayVideo(Video video)
     {
-        // TODO: Implement video playback
-        Navigation.NavigateTo($"/player/{video.Id}");
+        // Create new playlist session with just this video
+        var session = await PlaylistService.CreateFromVideosAsync(new List<Guid> { video.Id });
+        Navigation.NavigateTo($"/player?session={session.SessionId}");
+    }
+    
+    private async void PlayVideoWithStop(Video video, MouseEventArgs e)
+    {
+        await PlayVideo(video);
+    }
+    
+    private async Task PlayNext(Video video)
+    {
+        if (_currentPlaylistSession == null)
+        {
+            // Create new session if none exists
+            _currentPlaylistSession = await PlaylistService.CreateFromVideosAsync(new List<Guid> { video.Id });
+            Snackbar.Add($"Started new playlist with '{video.Title}'", Severity.Success);
+            Navigation.NavigateTo($"/player?session={_currentPlaylistSession.SessionId}");
+        }
+        else
+        {
+            // Insert after current video
+            var currentIndex = _currentPlaylistSession.CurrentIndex;
+            _currentPlaylistSession.Videos.Insert(currentIndex + 1, video);
+            await PlaylistService.UpdateSessionAsync(_currentPlaylistSession);
+            Snackbar.Add($"'{video.Title}' will play next", Severity.Success);
+        }
+    }
+    
+    private async Task PlayNextWithStop(Video video, MouseEventArgs e)
+    {
+        await PlayNext(video);
+    }
+    
+    private async Task AddToQueue(Video video)
+    {
+        if (_currentPlaylistSession == null)
+        {
+            // Create new session if none exists
+            _currentPlaylistSession = await PlaylistService.CreateFromVideosAsync(new List<Guid> { video.Id });
+            Snackbar.Add($"Started new playlist with '{video.Title}'", Severity.Success);
+        }
+        else
+        {
+            // Add to end of playlist
+            await PlaylistService.AddVideosAsync(_currentPlaylistSession, new List<Guid> { video.Id });
+            Snackbar.Add($"'{video.Title}' added to queue", Severity.Success);
+        }
+    }
+    
+    private async Task AddToQueueWithStop(Video video, MouseEventArgs e)
+    {
+        await AddToQueue(video);
     }
     
     private void EditVideo(Video video)
     {
         Navigation.NavigateTo($"/videos/{video.Id}/edit");
+    }
+    
+    private void EditVideoWithStop(Video video, MouseEventArgs e)
+    {
+        EditVideo(video);
     }
     
     private async Task DeleteVideo(Video video)
@@ -540,7 +790,7 @@
         parameters.Add("ButtonText", "Delete");
         parameters.Add("Color", Color.Error);
         
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Video", parameters);
+        var dialog = await DialogService.ShowAsync<VideoJockey.Web.Components.Dialogs.ConfirmDialog>("Delete Video", parameters);
         var result = await dialog.Result;
         
         if (result != null && !result.Canceled)
@@ -564,5 +814,281 @@
                 Snackbar.Add($"Error deleting video: {ex.Message}", Severity.Error);
             }
         }
+    }
+    
+    private async Task DeleteVideoWithStop(Video video, MouseEventArgs e)
+    {
+        await DeleteVideo(video);
+    }
+    
+    private bool IsVideoSelected(Video video)
+    {
+        return _selectedVideos.Contains(video);
+    }
+    
+    private void ToggleVideoSelection(Video video)
+    {
+        if (_selectedVideos.Contains(video))
+        {
+            _selectedVideos.Remove(video);
+        }
+        else
+        {
+            _selectedVideos.Add(video);
+        }
+    }
+    
+    private void SelectAll(bool selectAll)
+    {
+        if (selectAll)
+        {
+            _selectedVideos = new HashSet<Video>(_videos);
+        }
+        else
+        {
+            _selectedVideos.Clear();
+        }
+    }
+    
+    private void ClearSelection()
+    {
+        _selectedVideos.Clear();
+    }
+    
+    private async Task OpenOrganizeDialog()
+    {
+        if (!_selectedVideos.Any())
+        {
+            Snackbar.Add("Please select videos to organize", Severity.Warning);
+            return;
+        }
+        
+        var parameters = new DialogParameters
+        {
+            { "SelectedVideos", _selectedVideos.ToList() }
+        };
+        
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+        
+        var dialog = await DialogService.ShowAsync<BulkOrganizeDialog>("Organize Videos", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            // Refresh the list after organizing
+            await SearchVideos();
+            ClearSelection();
+        }
+    }
+    
+    private async Task OpenTagEditDialog()
+    {
+        if (!_selectedVideos.Any())
+        {
+            Snackbar.Add("Please select videos to edit", Severity.Warning);
+            return;
+        }
+        
+        var parameters = new DialogParameters
+        {
+            { "SelectedVideos", _selectedVideos.ToList() }
+        };
+        
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+        
+        var dialog = await DialogService.ShowAsync<BulkTagEditDialog>("Edit Tags", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            // Refresh the list after editing tags
+            await SearchVideos();
+            ClearSelection();
+        }
+    }
+    
+    private async Task OpenNfoExportDialog()
+    {
+        if (!_selectedVideos.Any())
+        {
+            Snackbar.Add("Please select videos to export", Severity.Warning);
+            return;
+        }
+        
+        var parameters = new DialogParameters
+        {
+            { "SelectedVideos", _selectedVideos.ToList() }
+        };
+        
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+        
+        var dialog = await DialogService.ShowAsync<BulkNfoExportDialog>("Export NFO Files", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            ClearSelection();
+        }
+    }
+    
+    // Keyboard shortcut handlers
+    private async void FocusSearch()
+    {
+        await InvokeAsync(async () =>
+        {
+            await JS.InvokeVoidAsync("eval", "document.querySelector('[placeholder*=\"Search\"]')?.focus()");
+        });
+    }
+    
+    private async void SelectAllShortcut()
+    {
+        await InvokeAsync(() =>
+        {
+            SelectAll(!(_selectedVideos.Count == _videos.Count && _videos.Any()));
+            StateHasChanged();
+        });
+    }
+    
+    private async void DeleteSelected()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_selectedVideos.Any())
+            {
+                var parameters = new DialogParameters();
+                parameters.Add("ContentText", $"Are you sure you want to delete {_selectedVideos.Count} video(s)?");
+                parameters.Add("ButtonText", "Delete");
+                parameters.Add("Color", Color.Error);
+                
+                var dialog = await DialogService.ShowAsync<VideoJockey.Web.Components.Dialogs.ConfirmDialog>("Delete Videos", parameters);
+                var result = await dialog.Result;
+                
+                if (result != null && !result.Canceled)
+                {
+                    foreach (var video in _selectedVideos.ToList())
+                    {
+                        await DeleteVideo(video);
+                    }
+                    ClearSelection();
+                }
+            }
+            else
+            {
+                Snackbar.Add("No videos selected", Severity.Warning);
+            }
+        });
+    }
+    
+    private async void PlaySelected()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_selectedVideos.Any())
+            {
+                var videoIds = _selectedVideos.Select(v => v.Id).ToList();
+                var session = await PlaylistService.CreateFromVideosAsync(videoIds);
+                Navigation.NavigateTo($"/player?session={session.SessionId}");
+            }
+            else
+            {
+                Snackbar.Add("No videos selected", Severity.Warning);
+            }
+        });
+    }
+    
+    private async void OrganizeSelected()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_selectedVideos.Any())
+            {
+                await OpenOrganizeDialog();
+            }
+            else
+            {
+                Snackbar.Add("No videos selected", Severity.Warning);
+            }
+        });
+    }
+    
+    private async void EditTagsSelected()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_selectedVideos.Any())
+            {
+                await OpenTagEditDialog();
+            }
+            else
+            {
+                Snackbar.Add("No videos selected", Severity.Warning);
+            }
+        });
+    }
+    
+    private async Task HandleContextMenu(MouseEventArgs e, Video video)
+    {
+        _contextMenuVideo = video;
+        if (_contextMenu != null)
+        {
+            // Open context menu at mouse position
+            _contextMenu.Open((int)e.ClientX, (int)e.ClientY);
+            StateHasChanged();
+        }
+        await Task.CompletedTask;
+    }
+    
+    private async Task OpenContextMenu(MouseEventArgs e, Video video)
+    {
+        await HandleContextMenu(e, video);
+    }
+    
+    private async Task OnTableRowContextMenu(TableRowClickEventArgs<Video> args)
+    {
+        if (args.Item != null && args.MouseEventArgs != null)
+        {
+            await OpenContextMenu(args.MouseEventArgs, args.Item);
+        }
+    }
+    
+    private async Task OnVideoDeleted(Video video)
+    {
+        // Remove from selected videos if it was selected
+        if (_selectedVideos.Contains(video))
+        {
+            _selectedVideos.Remove(video);
+        }
+        
+        // Refresh the video list
+        await SearchVideos();
+    }
+    
+    private async Task OnVideoUpdated(Video video)
+    {
+        // Refresh the video list to show updated information
+        await SearchVideos();
+    }
+    
+    public void Dispose()
+    {
+        // Clean up keyboard shortcuts
+        KeyboardService.UnregisterShortcut("Ctrl+F");
+        KeyboardService.UnregisterShortcut("Ctrl+A");
+        KeyboardService.UnregisterShortcut("Delete");
+        KeyboardService.UnregisterShortcut("Ctrl+P");
+        KeyboardService.UnregisterShortcut("Ctrl+O");
+        KeyboardService.UnregisterShortcut("Ctrl+E");
     }
 }

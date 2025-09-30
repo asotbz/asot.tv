@@ -1,14 +1,19 @@
-﻿@inherits LayoutComponentBase
-
-<MudThemeProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
+﻿@using VideoJockey.Web.Services
+@using VideoJockey.Web.Components.Dialogs
+@using VideoJockey.Web.Components.Shared
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject KeyboardShortcutService KeyboardService
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inherits LayoutComponentBase
 
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
         <MudText Typo="Typo.h5" Class="ml-3">Video Jockey</MudText>
         <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Inherit" OnClick="ShowKeyboardShortcuts" Title="Keyboard Shortcuts (F1)" />
         <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Inherit" />
         <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Color="Color.Inherit" />
     </MudAppBar>
@@ -26,6 +31,9 @@
                 <MudNavLink Href="/tags" Icon="@Icons.Material.Filled.Label">Tags</MudNavLink>
                 <MudNavLink Href="/artists" Icon="@Icons.Material.Filled.Person">Artists</MudNavLink>
             </MudNavGroup>
+            <MudNavLink Href="/collections" Icon="@Icons.Material.Filled.Collections">Collections</MudNavLink>
+            <MudNavLink Href="/search" Icon="@Icons.Material.Filled.Search">Search</MudNavLink>
+            <MudNavLink Href="/activity-log" Icon="@Icons.Material.Filled.History">Activity Log</MudNavLink>
             <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
         </MudNavMenu>
     </MudDrawer>
@@ -36,11 +44,47 @@
     </MudMainContent>
 </MudLayout>
 
+<MudDrawerContainer>
+    <MiniPlayer />
+</MudDrawerContainer>
+
 @code {
     private bool _drawerOpen = true;
+    private DotNetObjectReference<KeyboardShortcutService>? _keyboardRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize keyboard shortcuts
+            await KeyboardService.InitializeAsync();
+
+            // Register global shortcuts
+            KeyboardService.RegisterShortcut("F1", "Global", ShowKeyboardShortcuts);
+            KeyboardService.RegisterShortcut("Alt+H", "Global", () => Navigation.NavigateTo("/"));
+            KeyboardService.RegisterShortcut("Alt+V", "Global", () => Navigation.NavigateTo("/videos"));
+            KeyboardService.RegisterShortcut("Alt+D", "Global", () => Navigation.NavigateTo("/downloads"));
+            KeyboardService.RegisterShortcut("Alt+I", "Global", () => Navigation.NavigateTo("/import"));
+            KeyboardService.RegisterShortcut("Alt+C", "Global", () => Navigation.NavigateTo("/collections"));
+            KeyboardService.RegisterShortcut("Alt+L", "Global", () => Navigation.NavigateTo("/activity-log"));
+            KeyboardService.RegisterShortcut("Alt+S", "Global", () => Navigation.NavigateTo("/settings"));
+        }
+    }
 
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    private async void ShowKeyboardShortcuts()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<KeyboardShortcutsDialog>("Keyboard Shortcuts", parameters, options);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        KeyboardService.Dispose();
     }
 }

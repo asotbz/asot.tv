@@ -20,6 +20,8 @@ namespace VideoJockey.Data.Repositories
         private IRepository<FeaturedArtist>? _featuredArtists;
         private IRepository<Configuration>? _configurations;
         private IRepository<DownloadQueueItem>? _downloadQueueItems;
+        private ICollectionRepository? _collections;
+        private IRepository<CollectionVideo>? _collectionVideos;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -32,6 +34,8 @@ namespace VideoJockey.Data.Repositories
         public IRepository<FeaturedArtist> FeaturedArtists => _featuredArtists ??= new Repository<FeaturedArtist>(_context);
         public IRepository<Configuration> Configurations => _configurations ??= new Repository<Configuration>(_context);
         public IRepository<DownloadQueueItem> DownloadQueueItems => _downloadQueueItems ??= new Repository<DownloadQueueItem>(_context);
+        public ICollectionRepository Collections => _collections ??= new CollectionRepository(_context);
+        public IRepository<CollectionVideo> CollectionVideos => _collectionVideos ??= new Repository<CollectionVideo>(_context);
 
         public async Task<int> SaveChangesAsync()
         {

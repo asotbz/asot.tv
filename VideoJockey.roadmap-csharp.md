@@ -133,6 +133,36 @@ dotnet add VideoJockey.Web package Serilog.AspNetCore
 - [ ] Add database migrations/seeding
 - [ ] Create backup/restore functionality
 
+##### Repository Query Specifications (Finalized)
+- **Specification infrastructure**
+  - Add `ISpecification<T>` contract exposing `Criteria`, `Includes`, `OrderClauses`, `Skip/Take`, and `AsNoTracking` flags.
+  - Include a reusable `SpecificationEvaluator` that applies specifications against `IQueryable<T>` and supports chained `ThenBy` operations.
+  - Extend `IRepository<T>` with `Task<IReadOnlyList<T>> ListAsync(ISpecification<T> spec)`, `Task<T?> FirstOrDefaultAsync(ISpecification<T> spec)`, and `Task<int> CountAsync(ISpecification<T> spec)` to keep IQueryable usage inside the data layer.
+- **VideoQuery DTO**
+  - Fields: `string? Search`, `List<Guid> GenreIds`, `List<Guid> TagIds`, `List<Guid> CollectionIds`, `int? YearFrom`, `int? YearTo`, `int? DurationFrom`, `int? DurationTo`, `int? MinRating`, `bool? HasFile`, `bool? MissingMetadata`, `bool IncludeInactive`, `VideoSortOption SortBy`, `SortDirection SortDirection`, `int Page`, `int PageSize` (default 50, max 200).
+  - Normalise search input (trim, case-insensitive) and pre-build term tokens for matching on title, artist, album, featured artists, and tag names.
+- **Video specification catalog**
+  - `VideoByIdSpecification(Guid id, bool includeRelations = true)`: eager loads genres, tags, featured artists, and collections; optional `AsTracking` toggle for updates.
+  - `VideoBulkByIdsSpecification(IEnumerable<Guid> ids, bool asNoTracking = true)`: maintains input order via `CASE` ordering when needed for playlist assembly.
+  - `VideoQuerySpecification(VideoQuery query)`: central paginated catalog query with dynamic filters, optional eager loading toggles, configurable sort map (`Title`, `Artist`, `CreatedAt`, `LastPlayedAt`, `PlayCount`, `Rating`, `Year`, `Duration`, `Random`), and `ThenBy(v => v.Title)` as deterministic fallback.
+  - `VideoDuplicatesSpecification(string artist, string title)`: canonicalises strings, compares against both primary artist and featured artists, and groups by `Artist + Title` to surface duplicates (used before inserts and for maintenance jobs).
+  - `VideoRecentImportsSpecification(int take = 40)`: filters by `CreatedAt >= UtcNow - 30d`, orders by `CreatedAt` descending, and exposes `Take` override for dashboard widgets.
+  - `VideoMostPlayedSpecification(int take = 40, DateTime? since = null)`: optional `since` applies `LastPlayedAt >= since`; sorts by `PlayCount` then `LastPlayedAt`.
+  - `VideoNeedingMetadataSpecification()`: flags videos missing `ImvdbId`, `ThumbnailPath`, or `Description`, and those linked to failed metadata fetch attempts (tracked via `ActivityLog`).
+  - `VideoOrphansSpecification()`: identifies inactive entries (`!IsActive` or `FilePath == null`) and those whose physical file check fails (deferred to background validator via `PostProcessingAction`).
+- **Download queue specifications**
+  - `DownloadQueueByStatusSpecification(DownloadStatus status, bool includeVideo = false)`: sorts ascending by `Priority`, then `CreatedAt`, optional include of associated `Video` stub.
+  - `DownloadQueueActiveSpecification()`: combines `Queued` and `Downloading`, enforces `AsTracking` for worker updates, and projects limited fields for minimal locking.
+  - `DownloadQueueRetrySpecification(TimeSpan retryWindow, int maxRetries)`: returns failed items whose `RetryCount < maxRetries` and `UpdatedAt <= UtcNow - retryWindow`.
+  - `DownloadQueueHistorySpecification(DateTime? olderThan = null)`: retrieves completed/cancelled items for archival cleanup with pagination defaults (`PageSize = 100`).
+- **Supporting collections**
+  - `CollectionWithVideosSpecification(Guid collectionId)` and `CollectionsForVideoSpecification(Guid videoId)` ensure consistent eager loading of `CollectionVideos` join entities with projection to DTOs.
+  - `TagLookupSpecification(IEnumerable<Guid> tagIds)` and `GenreLookupSpecification(IEnumerable<Guid> genreIds)` centralise eager loading for association management and validation flows.
+- **Testing expectations**
+  - Unit tests cover each specification's predicate, ordering, and pagination behaviour using the in-memory provider and verifying generated SQL via `QueryString` when feasible.
+  - Integration tests validate that `VideoQuerySpecification` supports combined filters (e.g., search + genre + year range) and enforces the 200 item cap.
+  - Include guard tests confirming `SpecificationEvaluator` refuses null specs and honours `AsNoTracking` toggles.
+
 #### Service Layer
 ```csharp
 public interface IVideoService

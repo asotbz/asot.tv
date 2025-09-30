@@ -40,6 +40,16 @@ namespace VideoJockey.Core.Interfaces
         IRepository<DownloadQueueItem> DownloadQueueItems { get; }
 
         /// <summary>
+        /// Repository for Collection entities with specialized operations
+        /// </summary>
+        ICollectionRepository Collections { get; }
+
+        /// <summary>
+        /// Repository for CollectionVideo entities (join table)
+        /// </summary>
+        IRepository<CollectionVideo> CollectionVideos { get; }
+
+        /// <summary>
         /// Save all changes to the database
         /// </summary>
         Task<int> SaveChangesAsync();

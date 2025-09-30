@@ -17,6 +17,10 @@ namespace VideoJockey.Data.Context
         public DbSet<FeaturedArtist> FeaturedArtists { get; set; } = null!;
         public DbSet<Configuration> Configurations { get; set; } = null!;
         public DbSet<DownloadQueueItem> DownloadQueueItems { get; set; } = null!;
+        public DbSet<Collection> Collections { get; set; } = null!;
+        public DbSet<CollectionVideo> CollectionVideos { get; set; } = null!;
+        public DbSet<SavedSearch> SavedSearches { get; set; } = null!;
+        public DbSet<ActivityLog> ActivityLogs { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -130,6 +134,83 @@ namespace VideoJockey.Data.Context
                     .WithMany()
                     .HasForeignKey(e => e.VideoId)
                     .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // Configure Collection entity
+            modelBuilder.Entity<Collection>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Description).HasMaxLength(2000);
+                entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
+                entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.SmartCriteria).HasMaxLength(5000);
+                entity.HasIndex(e => e.Name);
+                entity.HasIndex(e => e.Type);
+                entity.HasIndex(e => e.IsPublic);
+                entity.HasIndex(e => e.IsFavorite);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure CollectionVideo entity (join table)
+            modelBuilder.Entity<CollectionVideo>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.HasOne(cv => cv.Collection)
+                    .WithMany(c => c.CollectionVideos)
+                    .HasForeignKey(cv => cv.CollectionId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(cv => cv.Video)
+                    .WithMany(v => v.CollectionVideos)
+                    .HasForeignKey(cv => cv.VideoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.CollectionId, e.VideoId }).IsUnique();
+                entity.HasIndex(e => new { e.CollectionId, e.Position });
+                entity.Property(e => e.Notes).HasMaxLength(1000);
+            });
+
+            // Configure SavedSearch entity
+            modelBuilder.Entity<SavedSearch>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Description).HasMaxLength(2000);
+                entity.Property(e => e.Query).IsRequired();
+                entity.Property(e => e.Icon).HasMaxLength(100);
+                entity.Property(e => e.Color).HasMaxLength(7);
+                entity.HasIndex(e => e.Name);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.LastUsed);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Configure ActivityLog entity
+            modelBuilder.Entity<ActivityLog>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.UserId).IsRequired().HasMaxLength(450);
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Action).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Category).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.EntityType).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.EntityId).HasMaxLength(450);
+                entity.Property(e => e.EntityName).HasMaxLength(500);
+                entity.Property(e => e.Details).HasMaxLength(5000);
+                entity.Property(e => e.OldValue).HasMaxLength(5000);
+                entity.Property(e => e.NewValue).HasMaxLength(5000);
+                entity.Property(e => e.IpAddress).HasMaxLength(45);
+                entity.Property(e => e.UserAgent).HasMaxLength(1000);
+                entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+                
+                entity.HasIndex(e => e.Timestamp);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.Action);
+                entity.HasIndex(e => new { e.EntityType, e.EntityId });
+                entity.HasIndex(e => e.IsSuccess);
             });
 
             // Seed initial configuration data with static dates

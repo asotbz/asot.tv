@@ -64,12 +64,12 @@ namespace VideoJockey.Services
             var pendingDownloads = await downloadQueueService.GetPendingDownloadsAsync();
 
             var downloadTasks = pendingDownloads.Select(download => 
-                ProcessDownload(download.Id.GetHashCode(), cancellationToken));
+                ProcessDownload(download.Id, cancellationToken));
 
             await Task.WhenAll(downloadTasks);
         }
 
-        private async Task ProcessDownload(int queueId, CancellationToken cancellationToken)
+        private async Task ProcessDownload(Guid queueId, CancellationToken cancellationToken)
         {
             await _downloadSemaphore.WaitAsync(cancellationToken);
             
@@ -78,12 +78,7 @@ namespace VideoJockey.Services
                 using var scope = _scopeFactory.CreateScope();
                 var downloadQueueService = scope.ServiceProvider.GetRequiredService<VideoJockey.Services.Interfaces.IDownloadQueueService>();
                 var ytDlpService = scope.ServiceProvider.GetRequiredService<IYtDlpService>();
-                var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
-                // Get the queue item - need to handle Guid to int conversion
-                var queueItems = await unitOfWork.DownloadQueueItems
-                    .GetAsync(q => q.Id.GetHashCode() == queueId);
-                var queueItem = queueItems.FirstOrDefault();
+                var queueItem = await downloadQueueService.GetByIdAsync(queueId);
                 
                 if (queueItem == null || queueItem.Status != DownloadStatusEnum.Queued)
                 {

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
+using VideoJockey.Core.Specifications.DownloadQueue;
 using VideoJockey.Services.Interfaces;
 using DownloadStatusEnum = VideoJockey.Core.Entities.DownloadStatus;
 
@@ -22,7 +23,7 @@ namespace VideoJockey.Services
             _logger = logger;
         }
         
-        public async Task<DownloadQueue> AddToQueueAsync(
+        public async Task<DownloadQueueItem> AddToQueueAsync(
             string url, 
             string outputPath,
             string? format = null,
@@ -55,7 +56,7 @@ namespace VideoJockey.Services
             }
         }
         
-        public async Task<DownloadQueue> AddToQueueAsync(
+        public async Task<DownloadQueueItem> AddToQueueAsync(
             string url, 
             string? customTitle = null,
             int priority = 0)
@@ -64,16 +65,13 @@ namespace VideoJockey.Services
             return await AddToQueueAsync(url, "downloads", null, priority);
         }
         
-        public async Task<List<DownloadQueue>> GetPendingDownloadsAsync()
+        public async Task<List<DownloadQueueItem>> GetPendingDownloadsAsync()
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        (q.Status == DownloadStatusEnum.Queued ||
-                         q.Status == DownloadStatusEnum.Failed));
-                
-                return items.Cast<DownloadQueue>().ToList();
+                var specification = new DownloadQueuePendingSpecification(includeFailed: true);
+                var items = await _unitOfWork.DownloadQueueItems.ListAsync(specification);
+                return items.ToList();
             }
             catch (Exception ex)
             {
@@ -81,15 +79,13 @@ namespace VideoJockey.Services
                 throw;
             }
         }
-        
-        public async Task<IEnumerable<DownloadQueue>> GetActiveDownloadsAsync()
+
+        public async Task<IEnumerable<DownloadQueueItem>> GetActiveDownloadsAsync()
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        q.Status == DownloadStatusEnum.Downloading);
-                return items.Cast<DownloadQueue>();
+                var specification = new DownloadQueueActiveSpecification();
+                return await _unitOfWork.DownloadQueueItems.ListAsync(specification);
             }
             catch (Exception ex)
             {
@@ -97,24 +93,19 @@ namespace VideoJockey.Services
                 throw;
             }
         }
-        
-        public async Task<IEnumerable<DownloadQueue>> GetQueueHistoryAsync(
+
+        public async Task<IEnumerable<DownloadQueueItem>> GetQueueHistoryAsync(
             int pageNumber = 1,
             int pageSize = 50)
         {
             try
             {
-                // Use GetAsync with ordering and paging logic
-                var allItems = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        (q.Status == DownloadStatusEnum.Completed ||
-                         q.Status == DownloadStatusEnum.Failed));
-                
-                return allItems
-                    .OrderByDescending(q => q.CompletedDate ?? q.StartedDate ?? q.AddedDate)
-                    .Skip((pageNumber - 1) * pageSize)
-                    .Take(pageSize)
-                    .Cast<DownloadQueue>();
+                var specification = new DownloadQueueHistorySpecification(
+                    olderThan: null,
+                    page: pageNumber,
+                    pageSize: pageSize);
+
+                return await _unitOfWork.DownloadQueueItems.ListAsync(specification);
             }
             catch (Exception ex)
             {
@@ -124,15 +115,13 @@ namespace VideoJockey.Services
         }
         
         public async Task UpdateQueueItemStatusAsync(
-            int queueId,
+            Guid queueId,
             DownloadStatusEnum status,
             string? errorMessage = null)
         {
             try
             {
-                // Convert int to Guid for lookup - or we need to update the interface
-                var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(queueId.ToString("D32")));
-                var item = items.FirstOrDefault();
+                var item = await GetQueueItemAsync(queueId, track: true);
                 
                 if (item != null)
                 {
@@ -162,15 +151,14 @@ namespace VideoJockey.Services
         }
         
         public async Task UpdateProgressAsync(
-            int queueId,
+            Guid queueId,
             double progress,
             string? downloadSpeed = null,
             string? eta = null)
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(queueId.ToString("D32")));
-                var item = items.FirstOrDefault();
+                var item = await GetQueueItemAsync(queueId, track: true);
                 
                 if (item != null)
                 {
@@ -188,12 +176,11 @@ namespace VideoJockey.Services
             }
         }
         
-        public async Task<bool> RemoveFromQueueAsync(int queueId)
+        public async Task<bool> RemoveFromQueueAsync(Guid queueId)
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(queueId.ToString("D32")));
-                var item = items.FirstOrDefault();
+                var item = await GetQueueItemAsync(queueId, track: true);
                 
                 if (item != null && item.Status != DownloadStatusEnum.Downloading)
                 {
@@ -213,12 +200,11 @@ namespace VideoJockey.Services
             }
         }
         
-        public async Task<bool> RetryFailedDownloadAsync(int queueId)
+        public async Task<bool> RetryFailedDownloadAsync(Guid queueId)
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(queueId.ToString("D32")));
-                var item = items.FirstOrDefault();
+                var item = await GetQueueItemAsync(queueId, track: true);
                 
                 if (item != null && item.Status == DownloadStatusEnum.Failed)
                 {
@@ -248,22 +234,19 @@ namespace VideoJockey.Services
         {
             try
             {
-                var completed = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        q.Status == DownloadStatusEnum.Completed);
-                
-                var count = completed.Count();
-                
+                var specification = new DownloadQueueByStatusSpecification(DownloadStatusEnum.Completed, includeVideo: false);
+                var completed = await _unitOfWork.DownloadQueueItems.ListAsync(specification);
+
                 foreach (var item in completed)
                 {
                     item.IsDeleted = true;
                     item.DeletedDate = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                 }
-                
+
                 await _unitOfWork.SaveChangesAsync();
+                var count = completed.Count;
                 _logger.LogInformation("Cleared {Count} completed downloads", count);
-                
                 return count;
             }
             catch (Exception ex)
@@ -272,21 +255,19 @@ namespace VideoJockey.Services
                 throw;
             }
         }
-        
-        public async Task<int> GetQueuePositionAsync(int queueId)
+
+        public async Task<int> GetQueuePositionAsync(Guid queueId)
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(queueId.ToString("D32")));
-                var item = items.FirstOrDefault();
+                var item = await GetQueueItemAsync(queueId, track: false);
                 
                 if (item == null || item.IsDeleted)
                     return -1;
                 
-                var pendingItems = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        q.Status == DownloadStatusEnum.Queued);
-                
+                var specification = new DownloadQueuePendingSpecification(includeFailed: false);
+                var pendingItems = await _unitOfWork.DownloadQueueItems.ListAsync(specification);
+
                 var orderedItems = pendingItems
                     .OrderByDescending(q => q.Priority)
                     .ThenBy(q => q.AddedDate)
@@ -302,13 +283,12 @@ namespace VideoJockey.Services
             }
         }
         
-        public async Task<IEnumerable<DownloadQueue>> GetAllQueuedItemsAsync()
+        public async Task<IEnumerable<DownloadQueueItem>> GetAllQueuedItemsAsync()
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted);
-                return items.Cast<DownloadQueue>();
+                var specification = new DownloadQueuePendingSpecification(includeFailed: true);
+                return await _unitOfWork.DownloadQueueItems.ListAsync(specification);
             }
             catch (Exception ex)
             {
@@ -318,20 +298,21 @@ namespace VideoJockey.Services
         }
         
         // Additional methods for compatibility
-        public async Task<List<DownloadQueue>> GetQueueAsync(bool includeCompleted = false)
+        public async Task<List<DownloadQueueItem>> GetQueueAsync(bool includeCompleted = false)
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted &&
-                        (includeCompleted || (q.Status != DownloadStatusEnum.Completed && 
-                                              q.Status != DownloadStatusEnum.Failed)));
-                
-                return items
-                    .OrderByDescending(q => q.Priority)
-                    .ThenBy(q => q.AddedDate)
-                    .Cast<DownloadQueue>()
+                var items = (await _unitOfWork.DownloadQueueItems.ListAsync(new DownloadQueueAllSpecification()))
                     .ToList();
+
+                if (!includeCompleted)
+                {
+                    items = items
+                        .Where(q => q.Status != DownloadStatusEnum.Completed && q.Status != DownloadStatusEnum.Failed)
+                        .ToList();
+                }
+
+                return items;
             }
             catch (Exception ex)
             {
@@ -342,24 +323,24 @@ namespace VideoJockey.Services
         
         
         
-        public async Task<bool> RetryDownloadAsync(int queueId)
+        public async Task<bool> RetryDownloadAsync(Guid queueId)
         {
             return await RetryFailedDownloadAsync(queueId);
         }
-        
-        public async Task<DownloadQueue?> GetNextDownloadAsync()
+
+        public async Task<DownloadQueueItem?> GetNextDownloadAsync()
         {
             try
             {
-                var items = await _unitOfWork.DownloadQueueItems
-                    .GetAsync(q => !q.IsDeleted && q.Status == DownloadStatusEnum.Queued);
-                
+                var specification = new DownloadQueuePendingSpecification(includeFailed: false);
+                var items = await _unitOfWork.DownloadQueueItems.ListAsync(specification);
+
                 var nextItem = items
                     .OrderByDescending(q => q.Priority)
                     .ThenBy(q => q.AddedDate)
                     .FirstOrDefault();
-                
-                return nextItem as DownloadQueue;
+
+                return nextItem;
             }
             catch (Exception ex)
             {
@@ -380,25 +361,41 @@ namespace VideoJockey.Services
             return await GetNextDownloadAsync();
         }
 
-        public async Task UpdateStatusAsync(int itemId, DownloadStatusEnum status, string? errorMessage = null)
+        public async Task UpdateStatusAsync(Guid itemId, DownloadStatusEnum status, string? errorMessage = null)
         {
             await UpdateQueueItemStatusAsync(itemId, status, errorMessage);
         }
 
-        public async Task UpdateProgressAsync(int itemId, double progress)
+        public async Task UpdateProgressAsync(Guid itemId, double progress)
         {
             await UpdateProgressAsync(itemId, progress, null, null);
         }
 
-        public async Task<DownloadQueueItem?> GetByIdAsync(int id)
+        public async Task<DownloadQueueItem?> GetByIdAsync(Guid id)
         {
-            var items = await _unitOfWork.DownloadQueueItems.GetAsync(q => q.Id == new Guid(id.ToString("D32")));
-            return items.FirstOrDefault();
+            return await GetQueueItemAsync(id, track: false);
         }
 
-        public async Task MarkAsCompletedAsync(int itemId, int? videoId = null)
+        public async Task MarkAsCompletedAsync(Guid itemId, Guid? videoId = null)
         {
             await UpdateQueueItemStatusAsync(itemId, DownloadStatusEnum.Completed, null);
+
+            if (videoId.HasValue)
+            {
+                var item = await GetQueueItemAsync(itemId, track: true);
+                if (item != null)
+                {
+                    item.VideoId = videoId;
+                    await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+            }
+        }
+
+        private async Task<DownloadQueueItem?> GetQueueItemAsync(Guid queueId, bool track = false)
+        {
+            var specification = new DownloadQueueByIdSpecification(queueId, track);
+            return await _unitOfWork.DownloadQueueItems.FirstOrDefaultAsync(specification);
         }
     }
 }

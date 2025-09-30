@@ -8,12 +8,12 @@ namespace VideoJockey.Services.Interfaces
     {
         Task<DownloadQueueItem> AddToQueueAsync(string url, int priority = 5);
         Task<DownloadQueueItem?> GetNextQueueItemAsync();
-        Task UpdateProgressAsync(int itemId, double progress);
-        Task UpdateProgressAsync(int itemId, double progress, string? downloadSpeed, string? eta);
-        Task UpdateStatusAsync(int itemId, DownloadStatus status, string? errorMessage = null);
-        Task<DownloadQueueItem?> GetByIdAsync(int id);
-        Task MarkAsCompletedAsync(int itemId, int? videoId = null);
-        Task<List<DownloadQueue>> GetPendingDownloadsAsync();
-        Task<bool> RetryDownloadAsync(int queueId);
+        Task UpdateProgressAsync(Guid itemId, double progress);
+        Task UpdateProgressAsync(Guid itemId, double progress, string? downloadSpeed, string? eta);
+        Task UpdateStatusAsync(Guid itemId, DownloadStatus status, string? errorMessage = null);
+        Task<DownloadQueueItem?> GetByIdAsync(Guid id);
+        Task MarkAsCompletedAsync(Guid itemId, Guid? videoId = null);
+        Task<List<DownloadQueueItem>> GetPendingDownloadsAsync();
+        Task<bool> RetryDownloadAsync(Guid queueId);
     }
 }

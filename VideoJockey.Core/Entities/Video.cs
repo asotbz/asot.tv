@@ -152,5 +152,10 @@ namespace VideoJockey.Core.Entities
         /// Collection of featured artists
         /// </summary>
         public virtual ICollection<FeaturedArtist> FeaturedArtists { get; set; } = new List<FeaturedArtist>();
+
+        /// <summary>
+        /// Collections this video belongs to
+        /// </summary>
+        public virtual ICollection<CollectionVideo> CollectionVideos { get; set; } = new List<CollectionVideo>();
     }
 }

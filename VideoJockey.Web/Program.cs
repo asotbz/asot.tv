@@ -7,6 +7,7 @@ using VideoJockey.Core.Interfaces;
 using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
+using VideoJockey.Services.Interfaces;
 using VideoJockey.Web.Middleware;
 
 // Configure Serilog
@@ -65,15 +66,29 @@ try
     // Register repositories and Unit of Work
     builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+    builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
 
     // Register Services
     builder.Services.AddScoped<IYtDlpService, YtDlpService>();
     builder.Services.AddScoped<VideoJockey.Services.Interfaces.IDownloadQueueService, DownloadQueueService>();
     builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
     builder.Services.AddScoped<IMetadataService, MetadataService>();
+    builder.Services.AddScoped<VideoJockey.Services.Interfaces.ICollectionService, VideoJockey.Services.CollectionService>();
+    builder.Services.AddScoped<IBulkOrganizeService, BulkOrganizeService>();
+    builder.Services.AddScoped<INfoExportService, NfoExportService>();
+    builder.Services.AddScoped<IVideoService, VideoService>();
+    builder.Services.AddScoped<ISearchService, SearchService>();
+    builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
+    builder.Services.AddScoped<IPlaylistService, PlaylistService>();
+    builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+    builder.Services.AddScoped<IBackupService, BackupService>();
+    
+    // Add HttpContextAccessor for ActivityLogService
+    builder.Services.AddHttpContextAccessor();
     
     // Register Background Services
     builder.Services.AddHostedService<DownloadBackgroundService>();
+    builder.Services.AddHostedService<ThumbnailBackgroundService>();
 
     // Add health checks
     builder.Services.AddHealthChecks()
@@ -84,6 +99,9 @@ try
 
     // Add memory cache
     builder.Services.AddMemoryCache();
+    
+    // Add web-specific services
+    builder.Services.AddScoped<VideoJockey.Web.Services.KeyboardShortcutService>();
 
     // Configure CORS (if needed for API access)
     builder.Services.AddCors(options =>
