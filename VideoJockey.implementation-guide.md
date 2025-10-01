@@ -2200,6 +2200,14 @@ docker volume inspect videojockey_data
 - Ensure WebSocket support in reverse proxy
 - Check SignalR connection in browser console
 
+## Week 5 External Integration Notes
+
+- **IMVDb HTTP client**: A typed Refit client (`IImvdbApi`) now handles all outbound calls with Polly retry/circuit-breaker policies and a fixed-window rate limiter derived from `ImvdbOptions`. Provide the API key via Settings or environment overrides to enable lookups.
+- **MetadataService refresh**: The service consumes the IMVDb client with an `IMemoryCache` layer and shared `ImvdbMapper`, enriching videos with directors, genres, and artwork where available while caching responses for 24 hours.
+- **ExternalSearchService**: Newly registered as `IExternalSearchService`, it merges IMVDb metadata and yt-dlp results into unified items so operators can discover missing videos and see download links alongside metadata quality signals.
+- **Blazor updates**: `/search` now includes an "External Sources" panel with controls for IMVDb/yt-dlp toggles, max results, and quick copy of current filters. Settings highlights the IMVDb dependency with a contextual alert.
+- **Regression coverage**: Unit tests cover `ImvdbApiKeyProvider` caching/priority rules and the external aggregation workflow to guard against regressions as integrations evolve.
+
 ## Next Steps
 
 1. **Extend Features**:

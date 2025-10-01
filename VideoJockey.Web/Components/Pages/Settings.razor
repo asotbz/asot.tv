@@ -4,7 +4,9 @@
 @using VideoJockey.Services.Interfaces
 @using Microsoft.AspNetCore.Components.Forms
 @using MudBlazor
+@using System.Collections.Generic
 @using System.IO
+@using System.Linq
 @inject IUnitOfWork UnitOfWork
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -197,6 +199,11 @@
                                 Adornment="Adornment.End"
                                 AdornmentIcon="@Icons.Material.Filled.Key"
                                 FullWidth="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        IMVDb access powers external search matching and automatic metadata enrichment. Leave blank to disable IMVDb calls.
+                    </MudAlert>
                 </MudItem>
                 <MudItem xs="12">
                     <MudTextField @bind-Value="_musicBrainzUserAgent" 
@@ -419,45 +426,93 @@
     
     private async Task LoadSettings()
     {
-        var configs = await UnitOfWork.Configurations.GetAllAsync();
-        var configDict = configs.ToDictionary(c => c.Key, c => c.Value);
-        
+        var configs = (await UnitOfWork.Configurations.GetAllAsync())
+            .OrderByDescending(c => c.UpdatedAt)
+            .ThenByDescending(c => c.CreatedAt)
+            .ToList();
+
+        var lookup = new Dictionary<string, Dictionary<string, string?>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var config in configs)
+        {
+            var category = string.IsNullOrWhiteSpace(config.Category) ? "System" : config.Category;
+            if (!lookup.TryGetValue(category, out var categoryMap))
+            {
+                categoryMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                lookup[category] = categoryMap;
+            }
+
+            if (!categoryMap.ContainsKey(config.Key))
+            {
+                categoryMap[config.Key] = config.Value;
+            }
+        }
+
+        string? GetRaw(string category, string key)
+        {
+            return lookup.TryGetValue(category, out var categoryMap) && categoryMap.TryGetValue(key, out var value)
+                ? value
+                : null;
+        }
+
+        string GetString(string category, string key, string fallback)
+        {
+            var raw = GetRaw(category, key);
+            return string.IsNullOrEmpty(raw) ? fallback : raw;
+        }
+
+        int GetInt(string category, string key, int fallback)
+        {
+            var raw = GetRaw(category, key);
+            return int.TryParse(raw, out var value) ? value : fallback;
+        }
+
+        bool GetBool(string category, string key, bool fallback)
+        {
+            var raw = GetRaw(category, key);
+            return bool.TryParse(raw, out var value) ? value : fallback;
+        }
+
         // Load General Settings
-        _libraryPath = configDict.GetValueOrDefault("LibraryPath", "");
-        _downloadsPath = configDict.GetValueOrDefault("DownloadsPath", "");
-        _namingPattern = configDict.GetValueOrDefault("NamingPattern", "{artist}/{year} - {title}.{format}");
-        
+        _libraryPath = GetString("Storage", "LibraryPath", "");
+        _downloadsPath = GetString("Storage", "DownloadsPath", "");
+        _namingPattern = GetString("Organization", "NamingPattern", "{artist}/{year} - {title}.{format}");
+
         // Load Download Settings
-        _defaultVideoFormat = configDict.GetValueOrDefault("DefaultVideoFormat", "mp4");
-        _defaultVideoQuality = configDict.GetValueOrDefault("DefaultVideoQuality", "1080p");
-        _maxConcurrentDownloads = int.Parse(configDict.GetValueOrDefault("MaxConcurrentDownloads", "2") ?? "2");
-        _downloadRetries = int.Parse(configDict.GetValueOrDefault("DownloadRetries", "3") ?? "3");
-        _extractMetadata = bool.Parse(configDict.GetValueOrDefault("ExtractMetadata", "true") ?? "true");
-        _generateNfo = bool.Parse(configDict.GetValueOrDefault("GenerateNfo", "true") ?? "true");
-        _downloadSubtitles = bool.Parse(configDict.GetValueOrDefault("DownloadSubtitles", "false") ?? "false");
-        _embedThumbnails = bool.Parse(configDict.GetValueOrDefault("EmbedThumbnails", "false") ?? "false");
-        _ytDlpPath = configDict.GetValueOrDefault("YtDlpPath", "");
-        _ffmpegPath = configDict.GetValueOrDefault("FfmpegPath", "");
-        
+        _defaultVideoFormat = GetString("Download", "DefaultVideoFormat", "mp4");
+        _defaultVideoQuality = GetString("Download", "DefaultVideoQuality", "1080p");
+        _maxConcurrentDownloads = GetInt("Download", "MaxConcurrentDownloads", 2);
+        _downloadRetries = GetInt("Download", "DownloadRetries", 3);
+        _extractMetadata = GetBool("Download", "ExtractMetadata", true);
+        _generateNfo = GetBool("Metadata", "GenerateNfo", true);
+        _downloadSubtitles = GetBool("Download", "DownloadSubtitles", false);
+        _embedThumbnails = GetBool("Download", "EmbedThumbnails", false);
+        _ytDlpPath = GetString("System", "YtDlpPath", "");
+        _ffmpegPath = GetString("System", "FfmpegPath", "");
+
         // Load Metadata Settings
-        _enableOnlineMetadata = bool.Parse(configDict.GetValueOrDefault("EnableOnlineMetadata", "true") ?? "true");
-        _imvdbApiKey = configDict.GetValueOrDefault("ImvdbApiKey", "");
-        _musicBrainzUserAgent = configDict.GetValueOrDefault("MusicBrainzUserAgent", "VideoJockey/1.0");
-        _autoFetchMissingMetadata = bool.Parse(configDict.GetValueOrDefault("AutoFetchMissingMetadata", "true") ?? "true");
-        _overwriteExistingMetadata = bool.Parse(configDict.GetValueOrDefault("OverwriteExistingMetadata", "false") ?? "false");
-        
+        _enableOnlineMetadata = GetBool("Metadata", "EnableOnlineMetadata", true);
+        _imvdbApiKey = GetRaw("API", "ImvdbApiKey") ?? string.Empty;
+        _musicBrainzUserAgent = GetString("API", "MusicBrainzUserAgent", "VideoJockey/1.0");
+        _autoFetchMissingMetadata = GetBool("Metadata", "AutoFetchMissingMetadata", true);
+        _overwriteExistingMetadata = GetBool("Metadata", "OverwriteExistingMetadata", false);
+
         // Load Genre Mappings
-        var genreMappingString = configDict.GetValueOrDefault("GenreMappings", "");
-        if (!string.IsNullOrEmpty(genreMappingString))
+        var genreMappingString = GetRaw("Metadata", "GenreMappings");
+        if (!string.IsNullOrWhiteSpace(genreMappingString))
         {
             _genreMappings = System.Text.Json.JsonSerializer.Deserialize<List<GenreMapping>>(genreMappingString) ?? new();
         }
-        
+        else
+        {
+            _genreMappings.Clear();
+        }
+
         // Load Advanced Settings
-        _databaseBackupDays = int.Parse(configDict.GetValueOrDefault("DatabaseBackupDays", "30") ?? "30");
-        _logRetentionDays = int.Parse(configDict.GetValueOrDefault("LogRetentionDays", "30") ?? "30");
-        _enableDebugLogging = bool.Parse(configDict.GetValueOrDefault("EnableDebugLogging", "false") ?? "false");
-        _enableAutoBackup = bool.Parse(configDict.GetValueOrDefault("EnableAutoBackup", "true") ?? "true");
+        _databaseBackupDays = GetInt("System", "DatabaseBackupDays", 30);
+        _logRetentionDays = GetInt("System", "LogRetentionDays", 30);
+        _enableDebugLogging = GetBool("System", "EnableDebugLogging", false);
+        _enableAutoBackup = GetBool("System", "EnableAutoBackup", true);
     }
     
     private async Task SaveGeneralSettings()

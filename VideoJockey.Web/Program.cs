@@ -9,6 +9,7 @@ using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
 using VideoJockey.Services.Interfaces;
+using VideoJockey.Services.Models;
 using VideoJockey.Web.Middleware;
 
 // Configure Serilog
@@ -82,6 +83,7 @@ try
     builder.Services.AddScoped<INfoExportService, NfoExportService>();
     builder.Services.AddScoped<IVideoService, VideoService>();
     builder.Services.AddScoped<ISearchService, SearchService>();
+    builder.Services.AddScoped<IExternalSearchService, ExternalSearchService>();
     builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
     builder.Services.AddScoped<IPlaylistService, PlaylistService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
@@ -104,6 +106,15 @@ try
 
     // Add memory cache
     builder.Services.AddMemoryCache();
+
+    builder.Services.AddOptions<ImvdbOptions>()
+        .Bind(builder.Configuration.GetSection("Imvdb"))
+        .Configure(options =>
+        {
+            options.ApiKey ??= builder.Configuration["ApiKeys:ImvdbApiKey"];
+        });
+
+    builder.Services.AddImvdbIntegration();
     
     // Add web-specific services
     builder.Services.AddScoped<VideoJockey.Web.Services.KeyboardShortcutService>();

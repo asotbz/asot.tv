@@ -232,15 +232,15 @@ public interface IVideoService
 ### Week 5: External API Integration
 
 #### IMVDb Integration & yt-dlp Search
-- [ ] Create IMVDb API client with Refit
-- [ ] Implement yt-dlp search integration
-- [ ] Add Polly for resilience policies
-- [ ] Create metadata mapping services
-- [ ] Implement caching with IMemoryCache
-- [ ] Build search aggregation service
-- [ ] Add rate limiting
-- [ ] Create API response models
-- [ ] Implement error handling
+- [x] Create IMVDb API client with Refit
+- [x] Implement yt-dlp search integration
+- [x] Add Polly for resilience policies
+- [x] Create metadata mapping services
+- [x] Implement caching with IMemoryCache
+- [x] Build search aggregation service
+- [x] Add rate limiting
+- [x] Create API response models
+- [x] Implement error handling
 
 #### API Client Implementation
 ```csharp

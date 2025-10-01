@@ -482,7 +482,9 @@
     private async Task<TableData<ActivityLogEntity>> ServerReload(TableState state, CancellationToken token)
     {
         isLoading = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+
+        TableData<ActivityLogEntity> tableData;
 
         try
         {
@@ -490,7 +492,7 @@
                 searchTerm,
                 string.IsNullOrWhiteSpace(selectedCategory) ? null : selectedCategory,
                 string.IsNullOrWhiteSpace(selectedAction) ? null : selectedAction,
-                null, // userId - could be added if needed
+                null,
                 startDate,
                 endDate,
                 selectedSuccess,
@@ -499,7 +501,7 @@
             );
 
             logs = result.ToList();
-            
+
             var count = await ActivityLogService.GetLogCountAsync(
                 string.IsNullOrWhiteSpace(selectedCategory) ? null : selectedCategory,
                 string.IsNullOrWhiteSpace(selectedAction) ? null : selectedAction,
@@ -509,7 +511,7 @@
                 selectedSuccess
             );
 
-            return new TableData<ActivityLogEntity>
+            tableData = new TableData<ActivityLogEntity>
             {
                 Items = logs,
                 TotalItems = count
@@ -518,17 +520,17 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Failed to load activity logs: {ex.Message}", Severity.Error);
-            return new TableData<ActivityLogEntity>
+            tableData = new TableData<ActivityLogEntity>
             {
                 Items = new List<ActivityLogEntity>(),
                 TotalItems = 0
             };
         }
-        finally
-        {
-            isLoading = false;
-            StateHasChanged();
-        }
+
+        isLoading = false;
+        await InvokeAsync(StateHasChanged);
+
+        return tableData;
     }
 
     private async Task LoadStatistics()
@@ -563,10 +565,9 @@
                 false
             );
 
-            if (totalCount > 0)
-            {
-                successRate = (double)successCount / totalCount * 100;
-            }
+            successRate = totalCount > 0
+                ? (double)successCount / totalCount * 100
+                : 0;
 
             // Get top category
             var categorySummary = await ActivityLogService.GetCategorySummaryAsync(startDate, endDate);
@@ -576,6 +577,11 @@
                 topCategory = top.Key;
                 topCategoryCount = top.Value;
             }
+            else
+            {
+                topCategory = null;
+                topCategoryCount = 0;
+            }
 
             // Get top action
             var actionSummary = await ActivityLogService.GetActionSummaryAsync(startDate, endDate);
@@ -584,6 +590,11 @@
                 var top = actionSummary.OrderByDescending(x => x.Value).First();
                 topAction = top.Key;
                 topActionCount = top.Value;
+            }
+            else
+            {
+                topAction = null;
+                topActionCount = 0;
             }
         }
         catch (Exception ex)
@@ -610,6 +621,11 @@
                         Data = dailyActivity.Values.Select(v => (double)v).ToArray()
                     }
                 };
+            }
+            else
+            {
+                chartLabels = Array.Empty<string>();
+                chartSeries = new List<ChartSeries>();
             }
         }
         catch (Exception ex)

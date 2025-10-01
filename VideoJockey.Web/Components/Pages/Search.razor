@@ -3,9 +3,11 @@
 @using VideoJockey.Web.Components.Dialogs
 @using System.Text.Json
 @using VideoJockey.Services
+@using VideoJockey.Services.Models
 @inject VideoJockey.Services.Interfaces.ISearchService SearchService
 @inject VideoJockey.Services.Interfaces.IVideoService VideoService
 @inject VideoJockey.Services.Interfaces.ICollectionService CollectionService
+@inject VideoJockey.Services.Interfaces.IExternalSearchService ExternalSearchService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
@@ -41,6 +43,166 @@
                         }
                     </MudItem>
                 </MudGrid>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4 mt-4">
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.h6" Class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.TravelExplore" Class="mr-2" />
+                        External Sources
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Search IMVDb and YouTube for videos that are not yet in your library.
+                    </MudText>
+                </MudStack>
+
+                <MudGrid Class="mt-3" GutterSize="3">
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_externalQuery.SearchText"
+                                      Label="Search Text"
+                                      Variant="Variant.Outlined"
+                                      Immediate="false" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTextField @bind-Value="_externalQuery.Artist"
+                                      Label="Artist"
+                                      Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTextField @bind-Value="_externalQuery.Title"
+                                      Label="Song Title"
+                                      Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudNumericField T="int" @bind-Value="_externalQuery.MaxResults"
+                                         Label="Max Results"
+                                         Variant="Variant.Outlined"
+                                         Min="5" Max="20" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSwitch T="bool"
+                                   Checked="_externalQuery.IncludeImvdb"
+                                   CheckedChanged="(value) => _externalQuery.IncludeImvdb = value"
+                                   Color="Color.Primary"
+                                   Label="Include IMVDb" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSwitch T="bool"
+                                   Checked="_externalQuery.IncludeYtDlp"
+                                   CheckedChanged="(value) => _externalQuery.IncludeYtDlp = value"
+                                   Color="Color.Secondary"
+                                   Label="Include yt-dlp" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Secondary"
+                                   OnClick="UseCurrentFiltersForExternal"
+                                   StartIcon="@Icons.Material.Filled.Link">
+                            Use Current Filters
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   OnClick="@(async () => await PerformExternalSearch())"
+                                   Disabled="_isExternalSearching"
+                                   StartIcon="@Icons.Material.Filled.Search">
+                            @(_isExternalSearching ? "Searching..." : "Search External")
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+
+                @if (_isExternalSearching)
+                {
+                    <MudProgressLinear Class="mt-3" Color="Color.Primary" Indeterminate="true" />
+                }
+
+                @if (_externalResult?.Warnings?.Any() == true)
+                {
+                    foreach (var warning in _externalResult.Warnings)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">@warning</MudAlert>
+                    }
+                }
+
+                @if (_externalResult?.Items?.Any() == true)
+                {
+                    <MudGrid Class="mt-3" GutterSize="3">
+                        @foreach (var item in _externalResult.Items)
+                        {
+                            <MudItem xs="12" sm="6" md="4" lg="3">
+                                <MudCard Class="external-result-card">
+                                    <MudCardMedia Image="@GetExternalThumbnail(item)" Height="180" />
+                                    <MudCardContent>
+                                        <MudStack Spacing="1">
+                                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                                <MudText Typo="Typo.subtitle2" Class="text-truncate">@item.Title</MudText>
+                                                <MudChip T="string" Size="Size.Small" Color="@GetSourceColor(item.Source)">
+                                                    @item.Source.ToString()
+                                                </MudChip>
+                                            </MudStack>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @(!string.IsNullOrWhiteSpace(item.Artist) ? item.Artist : "Unknown Artist")
+                                            </MudText>
+                                            <MudProgressLinear Value="@(item.Confidence * 100)" Color="Color.Info" />
+
+                                            @if (item.Imvdb != null)
+                                            {
+                                                <MudStack Spacing="1" Class="mt-1">
+                                                    @if (item.Imvdb.ReleaseDate.HasValue)
+                                                    {
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            Release: @item.Imvdb.ReleaseDate.Value.ToString("yyyy-MM-dd")
+                                                        </MudText>
+                                                    }
+                                                    @if (item.Imvdb.Genres.Any())
+                                                    {
+                                                        <MudStack Row="true" Spacing="1">
+                                                            @foreach (var genre in item.Imvdb.Genres)
+                                                            {
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Success">@genre</MudChip>
+                                                            }
+                                                        </MudStack>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(item.Imvdb.Description))
+                                                    {
+                                                        <MudText Typo="Typo.caption" Class="text-truncate" Title="@item.Imvdb.Description">
+                                                            @item.Imvdb.Description
+                                                        </MudText>
+                                                    }
+                                                </MudStack>
+                                            }
+
+                                            @if (item.YtDlp != null)
+                                            {
+                                                <MudStack Spacing="1" Class="mt-1">
+                                                    @if (item.YtDlp.Duration != null)
+                                                    {
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            Duration: @item.YtDlp.Duration.Value.ToString()
+                                                        </MudText>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(item.YtDlp.Url))
+                                                    {
+                                                        <MudLink Href="@item.YtDlp.Url" Target="_blank">Open Source</MudLink>
+                                                    }
+                                                </MudStack>
+                                            }
+                                        </MudStack>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+                else if (_externalResult != null && !_isExternalSearching)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-2">
+                        No matches found from external sources.
+                    </MudAlert>
+                }
             </MudPaper>
         </MudItem>
 
@@ -282,6 +444,10 @@
     private bool _isSearching;
     private bool _hasSearched;
 
+    private ExternalSearchQuery _externalQuery = new() { MaxResults = 8 };
+    private ExternalSearchResult? _externalResult;
+    private bool _isExternalSearching;
+
     // Filter inputs
     private string _artistInput = string.Empty;
     private string _genreInput = string.Empty;
@@ -435,6 +601,71 @@
         }
     }
 
+    private void UseCurrentFiltersForExternal()
+    {
+        if (!string.IsNullOrWhiteSpace(_searchQuery.SearchText))
+        {
+            _externalQuery.SearchText = _searchQuery.SearchText!;
+        }
+
+        if (_searchQuery.Artists.Any())
+        {
+            _externalQuery.Artist = _searchQuery.Artists.First();
+        }
+        else if (!string.IsNullOrWhiteSpace(_artistInput))
+        {
+            _externalQuery.Artist = _artistInput;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_searchQuery.SearchText))
+        {
+            _externalQuery.Title = _searchQuery.SearchText;
+        }
+        else if (_searchQuery.Genres.Any())
+        {
+            _externalQuery.Title ??= _searchQuery.Genres.First();
+        }
+
+        _externalQuery.SearchText = _externalQuery.SearchText?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_externalQuery.SearchText))
+        {
+            var fallback = $"{_externalQuery.Artist ?? string.Empty} {_externalQuery.Title ?? string.Empty}".Trim();
+            _externalQuery.SearchText = fallback;
+        }
+    }
+
+    private async Task PerformExternalSearch()
+    {
+        if (_isExternalSearching)
+        {
+            return;
+        }
+
+        _isExternalSearching = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_externalQuery.SearchText))
+            {
+                UseCurrentFiltersForExternal();
+            }
+
+            _externalResult = await ExternalSearchService.SearchAsync(_externalQuery) ?? new ExternalSearchResult();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"External search failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExternalSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private void ClearFilters()
     {
         _searchQuery = new VideoJockey.Services.Interfaces.SearchQuery();
@@ -494,6 +725,32 @@
 
         // Return placeholder
         return "/images/video-placeholder.png";
+    }
+
+    private string GetExternalThumbnail(ExternalSearchItem item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ArtworkUrl))
+        {
+            return item.ArtworkUrl;
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.YtDlp?.ThumbnailUrl))
+        {
+            return item.YtDlp!.ThumbnailUrl!;
+        }
+
+        return "/images/video-placeholder.png";
+    }
+
+    private Color GetSourceColor(ExternalSearchSource source)
+    {
+        return source switch
+        {
+            ExternalSearchSource.Combined => Color.Primary,
+            ExternalSearchSource.Imvdb => Color.Success,
+            ExternalSearchSource.YtDlp => Color.Info,
+            _ => Color.Default
+        };
     }
 
     private void PlayVideo(Guid videoId)

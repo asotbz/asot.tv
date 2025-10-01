@@ -1,12 +1,19 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Refit;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
+using VideoJockey.Services.External.Imvdb;
+using VideoJockey.Services.Interfaces;
+using VideoJockey.Services.Models;
 
 namespace VideoJockey.Services;
 
@@ -15,15 +22,27 @@ public class MetadataService : IMetadataService
     private readonly ILogger<MetadataService> _logger;
     private readonly IUnitOfWork _unitOfWork;
     private readonly HttpClient _httpClient;
+    private readonly IMemoryCache _cache;
+    private readonly IImvdbApi _imvdbApi;
+    private readonly IOptionsMonitor<ImvdbOptions> _imvdbOptions;
+    private readonly IImvdbApiKeyProvider _apiKeyProvider;
     private readonly JsonSerializerOptions _jsonOptions;
 
     public MetadataService(
         ILogger<MetadataService> logger,
         IUnitOfWork unitOfWork,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IMemoryCache cache,
+        IImvdbApi imvdbApi,
+        IOptionsMonitor<ImvdbOptions> imvdbOptions,
+        IImvdbApiKeyProvider apiKeyProvider)
     {
         _logger = logger;
         _unitOfWork = unitOfWork;
+        _cache = cache;
+        _imvdbApi = imvdbApi;
+        _imvdbOptions = imvdbOptions;
+        _apiKeyProvider = apiKeyProvider;
         _httpClient = httpClientFactory.CreateClient();
         _jsonOptions = new JsonSerializerOptions 
         { 
@@ -191,23 +210,86 @@ public class MetadataService : IMetadataService
 
     public async Task<ImvdbMetadata?> GetImvdbMetadataAsync(string artist, string title, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(artist) || string.IsNullOrWhiteSpace(title))
+        {
+            _logger.LogWarning("Cannot query IMVDb with missing artist or title (Artist: '{Artist}', Title: '{Title}')", artist, title);
+            return null;
+        }
+
+        var trimmedArtist = artist.Trim();
+        var trimmedTitle = title.Trim();
+        var cacheKey = ImvdbMapper.BuildCacheKey(trimmedArtist, trimmedTitle);
+
+        if (_cache.TryGetValue<ImvdbMetadata>(cacheKey, out var cachedMetadata))
+        {
+            return cachedMetadata;
+        }
+
+        var apiKey = await _apiKeyProvider.GetApiKeyAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("IMVDb API key not configured; skipping lookup for {Artist} - {Title}", trimmedArtist, trimmedTitle);
+            return null;
+        }
+
         try
         {
-            // Note: IMVDb API requires authentication
-            // This is a placeholder implementation
-            _logger.LogWarning("IMVDb API integration not yet implemented");
-            
-            // TODO: Implement actual IMVDb API calls
-            // Example endpoint: https://imvdb.com/api/v1/search/videos
-            // Requires API key in headers
-            
-            return await Task.FromResult<ImvdbMetadata?>(null);
+            var query = $"{trimmedArtist} {trimmedTitle}";
+            var searchResponse = await _imvdbApi.SearchVideosAsync(
+                query,
+                perPage: 10,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (searchResponse?.Results == null || searchResponse.Results.Count == 0)
+            {
+                _logger.LogInformation("IMVDb returned no results for {Artist} - {Title}", trimmedArtist, trimmedTitle);
+                return null;
+            }
+
+            var bestMatch = ImvdbMapper.FindBestMatch(searchResponse.Results, trimmedArtist, trimmedTitle);
+            if (bestMatch == null)
+            {
+                _logger.LogInformation("IMVDb search results did not contain a suitable match for {Artist} - {Title}", trimmedArtist, trimmedTitle);
+                return null;
+            }
+
+            var videoResponse = await _imvdbApi.GetVideoAsync(
+                bestMatch.Id.ToString(CultureInfo.InvariantCulture),
+                cancellationToken).ConfigureAwait(false);
+
+            if (videoResponse == null)
+            {
+                _logger.LogInformation("IMVDb did not return video details for ID {Id}", bestMatch.Id);
+                return null;
+            }
+
+            var metadata = ImvdbMapper.MapToMetadata(videoResponse, bestMatch);
+
+            var options = _imvdbOptions.CurrentValue;
+            var expiration = options.CacheDuration <= TimeSpan.Zero
+                ? TimeSpan.FromHours(24)
+                : options.CacheDuration;
+
+            _cache.Set(cacheKey, metadata, new MemoryCacheEntryOptions
+            {
+                SlidingExpiration = expiration
+            });
+
+            return metadata;
+        }
+        catch (ApiException apiException)
+        {
+            _logger.LogWarning(apiException, "IMVDb API request failed with status {StatusCode} for {Artist} - {Title}",
+                apiException.StatusCode,
+                trimmedArtist,
+                trimmedTitle);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching IMVDb metadata for {Artist} - {Title}", artist, title);
-            return null;
+            _logger.LogError(ex, "Error fetching IMVDb metadata for {Artist} - {Title}", trimmedArtist, trimmedTitle);
         }
+
+        return null;
     }
 
     public async Task<MusicBrainzMetadata?> GetMusicBrainzMetadataAsync(string artist, string title, CancellationToken cancellationToken = default)
