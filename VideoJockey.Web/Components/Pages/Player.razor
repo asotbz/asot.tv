@@ -191,10 +191,11 @@
         }
     }
     
-    private async Task OnSessionUpdated(PlaylistSession session)
+    private Task OnSessionUpdated(PlaylistSession session)
     {
         playlistSession = session;
         StateHasChanged();
+        return Task.CompletedTask;
     }
     
     private async Task OnVideoEnded()

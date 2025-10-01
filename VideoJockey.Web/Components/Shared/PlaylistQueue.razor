@@ -230,13 +230,14 @@
         }
     }
     
-    private async Task UpdateDurations()
+    private Task UpdateDurations()
     {
         if (_session != null)
         {
             _totalDuration = PlaylistService.GetTotalDuration(_session);
             _remainingDuration = PlaylistService.GetRemainingDuration(_session);
         }
+        return Task.CompletedTask;
     }
     
     private List<Video> GetOrderedVideos()

@@ -274,7 +274,7 @@
         var dialog = await DialogService.ShowAsync<CollectionDialog>("Create Collection", parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             await LoadCollections();
         }
@@ -293,7 +293,7 @@
         var dialog = await DialogService.ShowAsync<ImportDialog>("Import Playlist", parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             await LoadCollections();
         }
@@ -353,7 +353,7 @@
         var dialog = await DialogService.ShowAsync<ExportDialog>("Export Collection", parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             Snackbar.Add("Collection exported successfully", Severity.Success);
         }

@@ -50,7 +50,6 @@
 
 @code {
     private bool _drawerOpen = true;
-    private DotNetObjectReference<KeyboardShortcutService>? _keyboardRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -83,8 +82,9 @@
         await DialogService.ShowAsync<KeyboardShortcutsDialog>("Keyboard Shortcuts", parameters, options);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         KeyboardService.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

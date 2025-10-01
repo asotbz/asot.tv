@@ -1,7 +1,8 @@
 @using VideoJockey.Core.Entities
-@using VideoJockey.Core.Interfaces
+@using VideoJockey.Services.Interfaces
 @using MudBlazor
 @inject IUnitOfWork UnitOfWork
+@inject IVideoService VideoService
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -456,10 +457,8 @@
                 }
                 
                 video.UpdatedAt = DateTime.UtcNow;
-                await UnitOfWork.Videos.UpdateAsync(video);
+                await VideoService.UpdateVideoAsync(video);
             }
-            
-            await UnitOfWork.SaveChangesAsync();
             
             Snackbar.Add($"Successfully updated {SelectedVideos.Count} video(s)", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));

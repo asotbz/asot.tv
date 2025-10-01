@@ -24,6 +24,7 @@ public class VideoQuery
     public List<string> ArtistNames { get; set; } = new();
     public List<string> Formats { get; set; } = new();
     public List<string> Resolutions { get; set; } = new();
+    public List<int> Years { get; set; } = new();
     public int? YearFrom { get; set; }
     public int? YearTo { get; set; }
     public int? DurationFrom { get; set; }
@@ -91,6 +92,15 @@ public class VideoQuery
         NormalizeStringList(ArtistNames);
         NormalizeStringList(Formats);
         NormalizeStringList(Resolutions);
+
+        if (Years.Count > 0)
+        {
+            Years = Years
+                .Where(year => year > 0)
+                .Distinct()
+                .OrderBy(year => year)
+                .ToList();
+        }
     }
 
     public int Skip => (Page - 1) * PageSize;

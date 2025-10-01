@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
 using VideoJockey.Core.Specifications;
@@ -11,11 +14,16 @@ public class VideoService : IVideoService
 {
     private readonly IRepository<Video> _videoRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEnumerable<IVideoUpdateNotifier> _updateNotifiers;
 
-    public VideoService(IRepository<Video> videoRepository, IUnitOfWork unitOfWork)
+    public VideoService(
+        IRepository<Video> videoRepository,
+        IUnitOfWork unitOfWork,
+        IEnumerable<IVideoUpdateNotifier> updateNotifiers)
     {
         _videoRepository = videoRepository;
         _unitOfWork = unitOfWork;
+        _updateNotifiers = updateNotifiers ?? Enumerable.Empty<IVideoUpdateNotifier>();
     }
 
     public async Task<List<Video>> GetAllVideosAsync(CancellationToken cancellationToken = default)
@@ -62,6 +70,11 @@ public class VideoService : IVideoService
     {
         await _videoRepository.AddAsync(video);
         await _unitOfWork.SaveChangesAsync();
+        var notification = await BuildNotificationAsync(video.Id);
+        if (notification != null)
+        {
+            await NotifyAsync(notifier => notifier.VideoCreatedAsync(notification));
+        }
         return video;
     }
 
@@ -69,6 +82,11 @@ public class VideoService : IVideoService
     {
         await _videoRepository.UpdateAsync(video);
         await _unitOfWork.SaveChangesAsync();
+        var notification = await BuildNotificationAsync(video.Id);
+        if (notification != null)
+        {
+            await NotifyAsync(notifier => notifier.VideoUpdatedAsync(notification));
+        }
         return video;
     }
 
@@ -79,6 +97,7 @@ public class VideoService : IVideoService
         {
             await _videoRepository.DeleteAsync(video);
             await _unitOfWork.SaveChangesAsync();
+            await NotifyAsync(notifier => notifier.VideoDeletedAsync(id));
         }
     }
 
@@ -130,5 +149,106 @@ public class VideoService : IVideoService
         var total = await _videoRepository.CountAsync(countSpecification);
 
         return new PagedResult<Video>(items, total, query.Page, query.PageSize);
+    }
+
+    public async Task<IReadOnlyList<Video>> GetVideosUnpagedAsync(VideoQuery query, CancellationToken cancellationToken = default)
+    {
+        if (query == null)
+        {
+            throw new ArgumentNullException(nameof(query));
+        }
+
+        var accumulator = new List<Video>();
+        var workingQuery = CloneQuery(query);
+        workingQuery.Page = 1;
+        workingQuery.PageSize = workingQuery.PageSize <= 0 ? 200 : Math.Min(workingQuery.PageSize, 200);
+
+        while (true)
+        {
+            var page = await GetVideosAsync(workingQuery, cancellationToken);
+            if (page.Items.Count == 0)
+            {
+                break;
+            }
+
+            accumulator.AddRange(page.Items);
+
+            if (accumulator.Count >= page.TotalCount || page.Items.Count < workingQuery.PageSize)
+            {
+                break;
+            }
+
+            workingQuery.Page += 1;
+        }
+
+        return accumulator;
+    }
+
+    private static VideoQuery CloneQuery(VideoQuery source)
+    {
+        return new VideoQuery
+        {
+            Search = source.Search,
+            GenreIds = new List<Guid>(source.GenreIds),
+            TagIds = new List<Guid>(source.TagIds),
+            CollectionIds = new List<Guid>(source.CollectionIds),
+            GenreNames = new List<string>(source.GenreNames),
+            ArtistNames = new List<string>(source.ArtistNames),
+            Formats = new List<string>(source.Formats),
+            Resolutions = new List<string>(source.Resolutions),
+            Years = new List<int>(source.Years),
+            YearFrom = source.YearFrom,
+            YearTo = source.YearTo,
+            DurationFrom = source.DurationFrom,
+            DurationTo = source.DurationTo,
+            MinRating = source.MinRating,
+            HasFile = source.HasFile,
+            MissingMetadata = source.MissingMetadata,
+            HasCollections = source.HasCollections,
+            HasYouTubeId = source.HasYouTubeId,
+            HasImvdbId = source.HasImvdbId,
+            AddedAfter = source.AddedAfter,
+            AddedBefore = source.AddedBefore,
+            IncludeInactive = source.IncludeInactive,
+            SortBy = source.SortBy,
+            SortDirection = source.SortDirection,
+            Page = source.Page,
+            PageSize = source.PageSize
+        };
+    }
+
+    private async Task NotifyAsync(Func<IVideoUpdateNotifier, Task> callback)
+    {
+        foreach (var notifier in _updateNotifiers)
+        {
+            await callback(notifier);
+        }
+    }
+
+    private async Task<VideoUpdateNotification?> BuildNotificationAsync(Guid videoId)
+    {
+        var spec = new VideoByIdSpecification(videoId, includeRelations: true, trackForUpdate: false);
+        var entity = await _videoRepository.FirstOrDefaultAsync(spec);
+        if (entity == null)
+        {
+            return null;
+        }
+
+        var genres = entity.Genres?.Select(g => g.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>();
+        var tags = entity.Tags?.Select(t => t.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>();
+
+        return new VideoUpdateNotification(
+            entity.Id,
+            entity.Title,
+            entity.Artist,
+            entity.Album,
+            entity.Year,
+            entity.Duration,
+            entity.Format,
+            entity.ThumbnailPath,
+            entity.ImportedAt,
+            entity.UpdatedAt,
+            genres,
+            tags);
     }
 }

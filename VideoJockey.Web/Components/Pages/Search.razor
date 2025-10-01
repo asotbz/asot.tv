@@ -458,7 +458,7 @@
             new DialogParameters { ["Query"] = _searchQuery });
         var result = await dialog.Result;
 
-        if (!result.Canceled && result.Data is VideoJockey.Core.Entities.SavedSearch savedSearch)
+        if (result is { Canceled: false, Data: VideoJockey.Core.Entities.SavedSearch savedSearch })
         {
             try
             {

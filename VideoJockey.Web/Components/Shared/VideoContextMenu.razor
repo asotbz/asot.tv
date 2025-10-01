@@ -1,15 +1,14 @@
 @using VideoJockey.Core.Entities
-@using VideoJockey.Core.Interfaces
 @using VideoJockey.Services.Interfaces
 @using MudBlazor
 @using static VideoJockey.Services.Interfaces.IPlaylistService
-@inject IUnitOfWork UnitOfWork
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject IPlaylistService PlaylistService
 @inject ICollectionService CollectionService
 @inject IJSRuntime JS
+@inject IVideoService VideoService
 
 <MudPopover @ref="_popover" 
             Open="_isOpen" 
@@ -260,11 +259,30 @@
         Close();
     }
     
-    private void EditVideo()
+    private async Task EditVideo()
     {
         if (Video == null) return;
-        
-        Navigation.NavigateTo($"/videos/{Video.Id}/edit");
+
+        var parameters = new DialogParameters
+        {
+            { nameof(VideoJockey.Web.Components.Dialogs.VideoEditorDialog.Video), Video }
+        };
+
+        var dialog = await DialogService.ShowAsync<VideoJockey.Web.Components.Dialogs.VideoEditorDialog>(
+            "Edit Video",
+            parameters,
+            new DialogOptions
+            {
+                FullWidth = true,
+                MaxWidth = MaxWidth.Small
+            });
+
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: Video updated })
+        {
+            await OnVideoUpdated.InvokeAsync(updated);
+        }
+
         Close();
     }
     
@@ -319,20 +337,26 @@
         
         var result = await dialog.Result;
         
-        if (result != null && !result.Canceled)
+        var video = Video;
+        if (video == null)
+        {
+            Close();
+            return;
+        }
+
+        if (result is { Canceled: false })
         {
             try
             {
-                await UnitOfWork.Videos.DeleteAsync(Video);
-                await UnitOfWork.SaveChangesAsync();
-                
-                if (!string.IsNullOrEmpty(Video.FilePath) && File.Exists(Video.FilePath))
+                await VideoService.DeleteVideoAsync(video.Id);
+
+                if (!string.IsNullOrEmpty(video.FilePath) && File.Exists(video.FilePath))
                 {
-                    File.Delete(Video.FilePath);
+                    File.Delete(video.FilePath);
                 }
                 
-                Snackbar.Add($"'{Video.Title}' has been deleted", Severity.Success);
-                await OnVideoDeleted.InvokeAsync(Video);
+                Snackbar.Add($"'{video.Title}' has been deleted", Severity.Success);
+                await OnVideoDeleted.InvokeAsync(video);
             }
             catch (Exception ex)
             {

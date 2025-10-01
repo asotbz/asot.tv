@@ -1,0 +1,98 @@
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+@using VideoJockey.Core.Entities
+
+<MudTable Items="Videos" Hover="true" Striped="true" Dense="true">
+    <HeaderContent>
+        <MudTh></MudTh>
+        <MudTh>Title</MudTh>
+        <MudTh>Artist</MudTh>
+        <MudTh>Year</MudTh>
+        <MudTh>Duration</MudTh>
+        <MudTh>Format</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>
+            <MudCheckBox T="bool" Checked="SelectedVideoIds.Contains(context.Id)"
+                         DisableRipple="true"
+                         CheckedChanged="_ => OnSelectionToggled.InvokeAsync(context)" />
+        </MudTd>
+        <MudTd Class="cursor-pointer" @onclick="() => OnVideoClicked.InvokeAsync(context)">
+            <div class="d-flex align-center"
+                 @oncontextmenu="@(e => HandleContextMenu(e, context))"
+                 @oncontextmenu:preventDefault="true">
+                <MudAvatar Size="Size.Small" Image="@ThumbnailUrlSelector?.Invoke(context)" />
+                <MudText Class="ml-2">@context.Title</MudText>
+            </div>
+        </MudTd>
+        <MudTd>@context.Artist</MudTd>
+        <MudTd>@(context.Year?.ToString() ?? "—")</MudTd>
+        <MudTd>@DurationFormatter?.Invoke(context)</MudTd>
+        <MudTd>@(context.Format ?? "—")</MudTd>
+        <MudTd Class="text-right">
+            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           OnClick="() => OnPlay.InvokeAsync(context)" />
+            <MudIconButton Icon="@Icons.Material.Filled.SkipNext"
+                           Color="Color.Secondary"
+                           Size="Size.Small"
+                           OnClick="() => OnPlayNext.InvokeAsync(context)" />
+            <MudIconButton Icon="@Icons.Material.Filled.PlaylistAdd"
+                           Color="Color.Info"
+                           Size="Size.Small"
+                           OnClick="() => OnAddToQueue.InvokeAsync(context)" />
+            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                           Size="Size.Small"
+                           OnClick="() => OnEdit.InvokeAsync(context)" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                           Color="Color.Error"
+                           Size="Size.Small"
+                           OnClick="() => OnDelete.InvokeAsync(context)" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<Video> Videos { get; set; } = Array.Empty<Video>();
+
+    [Parameter]
+    public HashSet<Guid> SelectedVideoIds { get; set; } = new();
+
+    [Parameter]
+    public Func<Video, string?>? ThumbnailUrlSelector { get; set; }
+
+    [Parameter]
+    public Func<Video, string>? DurationFormatter { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnVideoClicked { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnPlay { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnPlayNext { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnAddToQueue { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnDelete { get; set; }
+
+    [Parameter]
+    public EventCallback<Video> OnSelectionToggled { get; set; }
+
+    [Parameter]
+    public EventCallback<(Video Video, MouseEventArgs MouseEvent)> OnContextMenuRequested { get; set; }
+
+    private Task HandleContextMenu(MouseEventArgs args, Video video)
+    {
+        return OnContextMenuRequested.InvokeAsync((video, args));
+    }
+}

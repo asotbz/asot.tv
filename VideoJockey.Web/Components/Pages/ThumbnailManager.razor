@@ -1,10 +1,9 @@
 @page "/thumbnails"
 @using VideoJockey.Core.Entities
-@using VideoJockey.Core.Interfaces
 @using VideoJockey.Services.Interfaces
 @using MudBlazor
-@inject IUnitOfWork UnitOfWork
 @inject IThumbnailService ThumbnailService
+@inject IVideoService VideoService
 @inject ISnackbar Snackbar
 @inject ILogger<ThumbnailManager> Logger
 
@@ -146,7 +145,7 @@
     
     private async Task LoadStatistics()
     {
-        var allVideos = await UnitOfWork.Videos.GetAllAsync();
+        var allVideos = await VideoService.GetAllVideosAsync();
         _totalVideos = allVideos.Count();
         
         _videosWithoutThumbnailsList = allVideos
@@ -228,8 +227,7 @@
                     Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot"),
                     thumbnailPath
                 );
-                await UnitOfWork.Videos.UpdateAsync(video);
-                await UnitOfWork.SaveChangesAsync();
+                await VideoService.UpdateVideoAsync(video);
                 
                 Snackbar.Add($"Thumbnail generated for '{video.Title}'", Severity.Success);
                 await LoadStatistics();

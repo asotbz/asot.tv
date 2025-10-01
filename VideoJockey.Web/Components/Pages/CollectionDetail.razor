@@ -331,6 +331,12 @@
     
     private async Task EditCollection()
     {
+        if (collection == null)
+        {
+            Snackbar.Add("Collection not loaded", Severity.Warning);
+            return;
+        }
+
         var parameters = new DialogParameters<CollectionDialog>
         {
             { x => x.Collection, collection }
@@ -346,7 +352,7 @@
         var dialog = await DialogService.ShowAsync<CollectionDialog>("Edit Collection", parameters, options);
         var result = await dialog.Result;
         
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             await LoadCollection();
         }
@@ -402,7 +408,7 @@
         var dialog = await DialogService.ShowAsync<ExportDialog>("Export Collection", parameters, options);
         var result = await dialog.Result;
         
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             Snackbar.Add("Collection exported successfully", Severity.Success);
         }

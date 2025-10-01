@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Specifications.Queries;
 
@@ -14,4 +15,5 @@ public interface IVideoService
     Task<List<Video>> GetVideosByGenreAsync(Guid genreId, CancellationToken cancellationToken = default);
     Task<List<Video>> GetRecentVideosAsync(int count = 10, CancellationToken cancellationToken = default);
     Task<PagedResult<Video>> GetVideosAsync(VideoQuery query, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Video>> GetVideosUnpagedAsync(VideoQuery query, CancellationToken cancellationToken = default);
 }

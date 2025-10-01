@@ -99,6 +99,12 @@ public sealed class VideoQuerySpecification : BaseSpecification<Video>
             ApplyCriteria(v => v.Resolution != null && resolutions.Contains(v.Resolution.ToLower()));
         }
 
+        if (query.Years.Count > 0)
+        {
+            var years = query.Years.ToList();
+            ApplyCriteria(v => v.Year.HasValue && years.Contains(v.Year.Value));
+        }
+
         if (query.YearFrom.HasValue)
         {
             ApplyCriteria(v => v.Year.HasValue && v.Year.Value >= query.YearFrom.Value);

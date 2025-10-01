@@ -1,4 +1,5 @@
 @page "/downloads"
+@using System.Threading
 @using VideoJockey.Core.Entities
 @using VideoJockey.Core.Interfaces
 @using VideoJockey.Services.Interfaces
@@ -8,7 +9,7 @@
 @inject VideoJockey.Services.Interfaces.IDownloadQueueService DownloadQueueService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>Downloads - VideoJockey</PageTitle>
 
@@ -333,7 +334,8 @@
 </MudContainer>
 
 @code {
-    private Timer? _refreshTimer;
+    private CancellationTokenSource? _refreshCts;
+    private Task? _refreshTask;
     private string _newDownloadUrl = "";
     private int _priority = 5;
     private bool _isAdding = false;
@@ -351,16 +353,35 @@
     protected override async Task OnInitializedAsync()
     {
         await RefreshQueue();
-        
-        // Set up auto-refresh timer
-        _refreshTimer = new Timer(async _ =>
+
+        _refreshCts = new CancellationTokenSource();
+        _refreshTask = RunRefreshLoopAsync(_refreshCts.Token);
+    }
+
+    private async Task RunRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
+        try
         {
-            await InvokeAsync(async () =>
+            while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                await RefreshQueue();
-                StateHasChanged();
-            });
-        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+                await InvokeAsync(async () =>
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    await RefreshQueue();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the component is disposed
+        }
     }
     
     private async Task RefreshQueue()
@@ -545,8 +566,32 @@
         };
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        if (_refreshCts != null)
+        {
+            try
+            {
+                _refreshCts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed
+            }
+        }
+
+        if (_refreshTask != null)
+        {
+            try
+            {
+                await _refreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected
+            }
+        }
+
+        _refreshCts?.Dispose();
     }
 }

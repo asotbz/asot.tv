@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using VideoJockey.Web.Hubs;
 using MudBlazor.Services;
 using Serilog;
 using Serilog.Events;
@@ -44,6 +45,9 @@ try
     // Add MudBlazor services
     builder.Services.AddMudServices();
 
+    // SignalR for real-time updates
+    builder.Services.AddSignalR();
+
     // Configure SQLite with Entity Framework Core
     var dataDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
     Directory.CreateDirectory(dataDirectory);
@@ -81,6 +85,7 @@ try
     builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
     builder.Services.AddScoped<IPlaylistService, PlaylistService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+    builder.Services.AddSingleton<IVideoUpdateNotifier, VideoJockey.Web.Services.SignalRVideoUpdateNotifier>();
     builder.Services.AddScoped<IBackupService, BackupService>();
     
     // Add HttpContextAccessor for ActivityLogService
@@ -156,6 +161,8 @@ try
 
     app.MapRazorComponents<VideoJockey.Web.Components.App>()
         .AddInteractiveServerRenderMode();
+
+    app.MapHub<VideoUpdatesHub>("/hubs/updates");
 
     // Apply database migrations and check first run
     using (var scope = app.Services.CreateScope())
