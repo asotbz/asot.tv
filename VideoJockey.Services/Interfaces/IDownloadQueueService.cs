@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using VideoJockey.Core.Entities;
@@ -15,5 +16,6 @@ namespace VideoJockey.Services.Interfaces
         Task MarkAsCompletedAsync(Guid itemId, Guid? videoId = null);
         Task<List<DownloadQueueItem>> GetPendingDownloadsAsync();
         Task<bool> RetryDownloadAsync(Guid queueId);
+        Task UpdateFilePathAsync(Guid itemId, string? filePath, string? outputPath = null);
     }
 }

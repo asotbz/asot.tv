@@ -169,6 +169,13 @@
                                 FullWidth="true" />
                 </MudItem>
                 <MudItem xs="12">
+                    <MudTextField @bind-Value="_ffprobePath" 
+                                Label="FFprobe Binary Path" 
+                                HelperText="Path to ffprobe executable (leave empty for system PATH)"
+                                Variant="Variant.Outlined"
+                                FullWidth="true" />
+                </MudItem>
+                <MudItem xs="12">
                     <MudButton Variant="Variant.Filled" 
                              Color="Color.Primary" 
                              OnClick="SaveDownloadSettings"
@@ -393,6 +400,7 @@
     private bool _embedThumbnails = false;
     private string _ytDlpPath = "";
     private string _ffmpegPath = "";
+    private string _ffprobePath = "";
     
     // Metadata Settings
     private bool _enableOnlineMetadata = true;
@@ -489,6 +497,7 @@
         _embedThumbnails = GetBool("Download", "EmbedThumbnails", false);
         _ytDlpPath = GetString("System", "YtDlpPath", "");
         _ffmpegPath = GetString("System", "FfmpegPath", "");
+        _ffprobePath = GetString("System", "FfprobePath", "");
 
         // Load Metadata Settings
         _enableOnlineMetadata = GetBool("Metadata", "EnableOnlineMetadata", true);
@@ -544,7 +553,8 @@
             ("DownloadSubtitles", _downloadSubtitles.ToString(), "Download"),
             ("EmbedThumbnails", _embedThumbnails.ToString(), "Download"),
             ("YtDlpPath", _ytDlpPath, "System"),
-            ("FfmpegPath", _ffmpegPath, "System")
+            ("FfmpegPath", _ffmpegPath, "System"),
+            ("FfprobePath", _ffprobePath, "System")
         });
         
         Snackbar.Add("Download settings saved successfully", Severity.Success);

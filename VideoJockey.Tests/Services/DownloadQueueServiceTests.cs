@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,6 +8,8 @@ using VideoJockey.Core.Interfaces;
 using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
+using VideoJockey.Services.Models;
+using VideoJockey.Services.Interfaces;
 using Xunit;
 using DownloadStatusEnum = VideoJockey.Core.Entities.DownloadStatus;
 
@@ -22,7 +25,13 @@ public class DownloadQueueServiceTests
 
         var context = new ApplicationDbContext(options);
         var unitOfWork = new UnitOfWork(context);
-        var service = new DownloadQueueService(unitOfWork, NullLogger<DownloadQueueService>.Instance);
+        var taskQueue = new DownloadTaskQueue();
+        var settingsProvider = new TestDownloadSettingsProvider();
+        var service = new DownloadQueueService(
+            unitOfWork,
+            NullLogger<DownloadQueueService>.Instance,
+            taskQueue,
+            settingsProvider);
         return (context, unitOfWork, service);
     }
 
@@ -79,5 +88,30 @@ public class DownloadQueueServiceTests
 
         Assert.Contains(pending, item => item.Id == queued.Id);
         Assert.Contains(pending, item => item.Id == failed.Id);
+    }
+}
+
+internal sealed class TestDownloadSettingsProvider : IDownloadSettingsProvider
+{
+    private readonly DownloadWorkerOptions _options = new()
+    {
+        OutputDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()),
+        TempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "tmp"),
+        MaxConcurrentDownloads = 2,
+        MaxRetryCount = 3,
+        Format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        ProgressPercentageStep = 1,
+        RetryBackoffSeconds = 15
+    };
+
+    public DownloadWorkerOptions GetOptions() => _options;
+
+    public string GetFfmpegPath() => "ffmpeg";
+
+    public string GetFfprobePath() => "ffprobe";
+
+    public void Invalidate()
+    {
+        // No-op for tests
     }
 }

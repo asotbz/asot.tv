@@ -12,17 +12,20 @@ public class ThumbnailService : IThumbnailService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ThumbnailService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IDownloadSettingsProvider _settingsProvider;
     private readonly string _thumbnailDirectory;
     private readonly string _webRootPath;
 
     public ThumbnailService(
         IUnitOfWork unitOfWork,
         ILogger<ThumbnailService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IDownloadSettingsProvider settingsProvider)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _configuration = configuration;
+        _settingsProvider = settingsProvider;
         
         _webRootPath = configuration["WebRootPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
         _thumbnailDirectory = Path.Combine(_webRootPath, "thumbnails");
@@ -60,7 +63,7 @@ public class ThumbnailService : IThumbnailService
             }
 
             // Use FFmpeg to generate thumbnail
-            var ffmpegPath = _configuration["FFmpegPath"] ?? "ffmpeg";
+            var ffmpegPath = _settingsProvider.GetFfmpegPath();
             var arguments = $"-i \"{videoPath}\" -ss {timePosition:F2} -vframes 1 -vf \"scale=320:-1\" -y \"{outputPath}\"";
 
             using var process = new Process
@@ -234,7 +237,7 @@ public class ThumbnailService : IThumbnailService
     {
         try
         {
-            var ffprobePath = _configuration["FFprobePath"] ?? "ffprobe";
+            var ffprobePath = _settingsProvider.GetFfprobePath();
             var arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"";
 
             using var process = new Process

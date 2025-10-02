@@ -1,139 +1,124 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.RegularExpressions;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Interfaces;
+using VideoJockey.Services.Interfaces;
+using VideoJockey.Services.Models;
+using YoutubeDLSharp;
+using YoutubeDLSharp.Metadata;
+using YoutubeDLSharp.Options;
+using CoreDownloadProgress = VideoJockey.Core.Interfaces.DownloadProgress;
+using CoreSearchResult = VideoJockey.Core.Interfaces.SearchResult;
 
 namespace VideoJockey.Services
 {
     public class YtDlpService : IYtDlpService
     {
         private readonly ILogger<YtDlpService> _logger;
+        private readonly IDownloadSettingsProvider _settingsProvider;
         private readonly string _ytDlpPath;
         private readonly string _cookiesPath;
-        private static readonly Regex ProgressRegex = new(@"\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*(\S+)\s+at\s+(\S+)\s+ETA\s+(\S+)", RegexOptions.Compiled);
-        private static readonly Regex DownloadedBytesRegex = new(@"\[download\]\s+(\d+\.?\d*)%\s+of\s+(\S+)", RegexOptions.Compiled);
-        
-        public YtDlpService(ILogger<YtDlpService> logger)
+
+        public YtDlpService(
+            ILogger<YtDlpService> logger,
+            IDownloadSettingsProvider settingsProvider)
         {
             _logger = logger;
+            _settingsProvider = settingsProvider;
             _ytDlpPath = GetYtDlpPath();
             _cookiesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "cookies.txt");
         }
-        
-        private string GetYtDlpPath()
+
+        public async Task<DownloadResult> DownloadVideoAsync(
+            string url,
+            string outputPath,
+            IProgress<CoreDownloadProgress>? progress = null,
+            CancellationToken cancellationToken = default)
         {
-            // Check common locations
-            var paths = new[]
-            {
-                "/usr/local/bin/yt-dlp",
-                "/usr/bin/yt-dlp",
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp"),
-                "yt-dlp" // Will use PATH
-            };
-            
-            foreach (var path in paths)
-            {
-                if (File.Exists(path))
-                {
-                    _logger.LogInformation("Found yt-dlp at: {Path}", path);
-                    return path;
-                }
-            }
-            
-            // Default to PATH lookup
-            return "yt-dlp";
-        }
-        
-        public async Task<DownloadResult> DownloadVideoAsync(string url, string outputPath, IProgress<DownloadProgress>? progress = null, CancellationToken cancellationToken = default)
-        {
+            var result = new DownloadResult();
+            var startTime = DateTime.UtcNow;
+            YtDlpVideoMetadata? metadata = null;
+
             try
             {
-                var result = new DownloadResult();
-                var startTime = DateTime.UtcNow;
-                
-                // First get metadata
-                var metadata = await GetVideoMetadataAsync(url, cancellationToken);
-                result.Metadata = metadata;
-                
-                // Prepare download arguments
-                var args = new List<string>
+                var workerOptions = _settingsProvider.GetOptions();
+                var resolvedOutputPath = ResolvePath(outputPath);
+                Directory.CreateDirectory(resolvedOutputPath);
+                metadata = await TryGetMetadataAsync(url, cancellationToken).ConfigureAwait(false);
+
+                var youtubeDl = CreateClient(resolvedOutputPath, workerOptions);
+                var optionSet = BuildDownloadOptionSet(resolvedOutputPath, workerOptions);
+                var downloadProgress = new Progress<YoutubeDLSharp.DownloadProgress>(p =>
                 {
-                    "--no-warnings",
-                    "--no-playlist",
-                    "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                    "--merge-output-format", "mp4",
-                    "--output", outputPath,
-                    "--newline",
-                    "--no-colors"
-                };
-                
-                // Add cookies if available
+                    if (p == null)
+                    {
+                        return;
+                    }
+
+                    progress?.Report(new CoreDownloadProgress
+                    {
+                        Status = p.State.ToString(),
+                        Percentage = Math.Clamp(p.Progress * 100, 0, 100),
+                        DownloadSpeed = p.DownloadSpeed,
+                        ETA = p.ETA,
+                        TotalBytes = ParseSizeToBytes(p.TotalDownloadSize),
+                        DownloadedBytes = ParseSizeToBytes(p.Data)
+                    });
+                });
+
                 if (File.Exists(_cookiesPath))
                 {
-                    args.AddRange(new[] { "--cookies", _cookiesPath });
+                    optionSet.Cookies = _cookiesPath;
                 }
-                
-                args.Add(url);
-                
-                var processStartInfo = new ProcessStartInfo
-                {
-                    FileName = _ytDlpPath,
-                    Arguments = string.Join(" ", args),
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                
-                using var process = new Process { StartInfo = processStartInfo };
-                var outputLines = new List<string>();
-                
-                process.OutputDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
-                    {
-                        outputLines.Add(e.Data);
-                        ParseProgress(e.Data, progress);
-                    }
-                };
-                
-                process.ErrorDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
-                    {
-                        _logger.LogWarning("yt-dlp error: {Error}", e.Data);
-                    }
-                };
-                
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-                
-                await process.WaitForExitAsync(cancellationToken);
-                
+
+                var mergeFormat = DownloadMergeFormat.Mp4;
+                var runResult = await youtubeDl.RunVideoDownload(
+                    url,
+                    workerOptions.Format,
+                    mergeFormat,
+                    VideoRecodeFormat.None,
+                    cancellationToken,
+                    downloadProgress,
+                    null,
+                    optionSet).ConfigureAwait(false);
+
                 result.Duration = DateTime.UtcNow - startTime;
-                
-                if (process.ExitCode == 0)
-                {
-                    result.Success = true;
-                    result.FilePath = outputPath;
-                    _logger.LogInformation("Successfully downloaded video to: {Path}", outputPath);
-                }
-                else
+                result.Metadata = metadata;
+
+                if (!runResult.Success)
                 {
                     result.Success = false;
-                    result.ErrorMessage = $"yt-dlp exited with code {process.ExitCode}";
-                    _logger.LogError("Download failed: {Error}", result.ErrorMessage);
+                    result.ErrorMessage = FormatErrorOutput(runResult.ErrorOutput);
+                    _logger.LogError("Download failed for {Url}: {Error}", url, result.ErrorMessage);
+                    return result;
                 }
-                
+
+                var resolvedPath = ResolveDownloadedFilePath(runResult.Data, resolvedOutputPath, metadata);
+
+                if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+                {
+                    result.Success = false;
+                    result.ErrorMessage = "Downloaded file could not be located.";
+                    _logger.LogError("Download for {Url} completed but file could not be found", url);
+                    return result;
+                }
+
+                result.Success = true;
+                result.FilePath = resolvedPath;
+                _logger.LogInformation("Downloaded video from {Url} to {Path}", url, resolvedPath);
                 return result;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Download cancelled for {Url}", url);
+                throw;
             }
             catch (Exception ex)
             {
@@ -141,220 +126,77 @@ namespace VideoJockey.Services
                 return new DownloadResult
                 {
                     Success = false,
-                    ErrorMessage = ex.Message
+                    ErrorMessage = ex.Message,
+                    Metadata = metadata,
+                    Duration = DateTime.UtcNow - startTime
                 };
             }
         }
-        
-        public async Task<List<SearchResult>> SearchVideosAsync(string query, int maxResults = 10, CancellationToken cancellationToken = default)
+
+        public async Task<List<CoreSearchResult>> SearchVideosAsync(
+            string query,
+            int maxResults = 10,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var searchUrl = $"ytsearch{maxResults}:{query}";
-                var args = new List<string>
+                var workerOptions = _settingsProvider.GetOptions();
+                var youtubeDl = CreateClient(null, workerOptions);
+                var optionSet = BuildBaseOptionSet(workerOptions);
+                var searchQuery = $"ytsearch{Math.Max(1, maxResults)}:{query}";
+                var runResult = await youtubeDl.RunVideoDataFetch(
+                    searchQuery,
+                    cancellationToken,
+                    flat: false,
+                    fetchComments: false,
+                    optionSet).ConfigureAwait(false);
+
+                if (!runResult.Success || runResult.Data == null)
                 {
-                    "--no-warnings",
-                    "--dump-json",
-                    "--flat-playlist",
-                    "--no-playlist",
-                    searchUrl
-                };
-                
-                var processStartInfo = new ProcessStartInfo
-                {
-                    FileName = _ytDlpPath,
-                    Arguments = string.Join(" ", args),
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                
-                using var process = Process.Start(processStartInfo);
-                if (process == null)
-                    throw new InvalidOperationException("Failed to start yt-dlp process");
-                
-                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                await process.WaitForExitAsync(cancellationToken);
-                
-                var results = new List<SearchResult>();
-                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                
-                foreach (var line in lines)
-                {
-                    try
-                    {
-                        using var doc = JsonDocument.Parse(line);
-                        var root = doc.RootElement;
-                        
-                        var result = new SearchResult
-                        {
-                            Id = root.GetProperty("id").GetString() ?? "",
-                            Title = root.GetProperty("title").GetString() ?? "",
-                            Url = root.GetProperty("url").GetString() ?? $"https://www.youtube.com/watch?v={root.GetProperty("id").GetString()}",
-                            Channel = root.TryGetProperty("channel", out var channel) ? channel.GetString() : null,
-                            ThumbnailUrl = root.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString() : null
-                        };
-                        
-                        if (root.TryGetProperty("duration", out var duration))
-                        {
-                            if (duration.TryGetDouble(out var seconds))
-                            {
-                                result.Duration = TimeSpan.FromSeconds(seconds);
-                            }
-                        }
-                        
-                        if (root.TryGetProperty("view_count", out var viewCount))
-                        {
-                            result.ViewCount = viewCount.GetInt64();
-                        }
-                        
-                        results.Add(result);
-                    }
-                    catch (JsonException ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to parse search result JSON");
-                    }
+                    _logger.LogWarning("Search for {Query} returned no data", query);
+                    return new List<CoreSearchResult>();
                 }
-                
-                return results;
+
+                var videoEntries = runResult.Data.Entries ?? new[] { runResult.Data };
+                return videoEntries
+                    .Where(entry => entry != null)
+                    .Select(entry => MapSearchResult(entry!))
+                    .ToList();
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                _logger.LogError(ex, "Error searching for videos with query: {Query}", query);
-                return new List<SearchResult>();
-            }
-        }
-        
-        public async Task<YtDlpVideoMetadata> GetVideoMetadataAsync(string url, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var args = new List<string>
-                {
-                    "--no-warnings",
-                    "--dump-json",
-                    "--no-playlist",
-                    url
-                };
-                
-                var processStartInfo = new ProcessStartInfo
-                {
-                    FileName = _ytDlpPath,
-                    Arguments = string.Join(" ", args),
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                
-                using var process = Process.Start(processStartInfo);
-                if (process == null)
-                    throw new InvalidOperationException("Failed to start yt-dlp process");
-                
-                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                await process.WaitForExitAsync(cancellationToken);
-                
-                using var doc = JsonDocument.Parse(output);
-                var root = doc.RootElement;
-                
-                var metadata = new YtDlpVideoMetadata
-                {
-                    Id = root.GetProperty("id").GetString() ?? "",
-                    Title = root.GetProperty("title").GetString() ?? "",
-                    Channel = root.TryGetProperty("channel", out var channel) ? channel.GetString() : null,
-                    Description = root.TryGetProperty("description", out var desc) ? desc.GetString() : null,
-                    ThumbnailUrl = root.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString() : null
-                };
-                
-                // Extract artist from title or uploader
-                if (root.TryGetProperty("artist", out var artist))
-                {
-                    metadata.Artist = artist.GetString();
-                }
-                else if (root.TryGetProperty("uploader", out var uploader))
-                {
-                    metadata.Artist = uploader.GetString();
-                }
-                
-                // Duration
-                if (root.TryGetProperty("duration", out var duration) && duration.TryGetDouble(out var seconds))
-                {
-                    metadata.Duration = TimeSpan.FromSeconds(seconds);
-                }
-                
-                // Upload date
-                if (root.TryGetProperty("upload_date", out var uploadDate))
-                {
-                    var dateStr = uploadDate.GetString();
-                    if (!string.IsNullOrEmpty(dateStr) && dateStr.Length == 8)
-                    {
-                        if (DateTime.TryParseExact(dateStr, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var date))
-                        {
-                            metadata.UploadDate = date;
-                        }
-                    }
-                }
-                
-                // View count
-                if (root.TryGetProperty("view_count", out var viewCount))
-                {
-                    metadata.ViewCount = viewCount.GetInt64();
-                }
-                
-                // Like count
-                if (root.TryGetProperty("like_count", out var likeCount))
-                {
-                    metadata.LikeCount = likeCount.GetInt64();
-                }
-                
-                // Video dimensions
-                if (root.TryGetProperty("width", out var width))
-                {
-                    metadata.Width = width.GetInt32();
-                }
-                
-                if (root.TryGetProperty("height", out var height))
-                {
-                    metadata.Height = height.GetInt32();
-                }
-                
-                // FPS
-                if (root.TryGetProperty("fps", out var fps))
-                {
-                    metadata.Fps = fps.GetDouble();
-                }
-                
-                // Codecs
-                if (root.TryGetProperty("vcodec", out var vcodec))
-                {
-                    metadata.VideoCodec = vcodec.GetString();
-                }
-                
-                if (root.TryGetProperty("acodec", out var acodec))
-                {
-                    metadata.AudioCodec = acodec.GetString();
-                }
-                
-                // Tags
-                if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
-                {
-                    metadata.Tags = tags.EnumerateArray()
-                        .Select(t => t.GetString())
-                        .Where(t => !string.IsNullOrEmpty(t))
-                        .Cast<string>()
-                        .ToList();
-                }
-                
-                return metadata;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting metadata for URL: {Url}", url);
                 throw;
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching for videos with query {Query}", query);
+                return new List<CoreSearchResult>();
+            }
         }
-        
+
+        public async Task<YtDlpVideoMetadata> GetVideoMetadataAsync(
+            string url,
+            CancellationToken cancellationToken = default)
+        {
+            var workerOptions = _settingsProvider.GetOptions();
+            var youtubeDl = CreateClient(null, workerOptions);
+            var optionSet = BuildBaseOptionSet(workerOptions);
+            var runResult = await youtubeDl.RunVideoDataFetch(
+                url,
+                cancellationToken,
+                flat: false,
+                fetchComments: false,
+                optionSet).ConfigureAwait(false);
+
+            if (!runResult.Success || runResult.Data == null)
+            {
+                var error = FormatErrorOutput(runResult.ErrorOutput);
+                throw new InvalidOperationException($"Failed to fetch metadata: {error}");
+            }
+
+            return MapMetadata(runResult.Data);
+        }
+
         public async Task<bool> ValidateInstallationAsync()
         {
             try
@@ -368,12 +210,14 @@ namespace VideoJockey.Services
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                
+
                 using var process = Process.Start(processStartInfo);
                 if (process == null)
+                {
                     return false;
-                
-                await process.WaitForExitAsync();
+                }
+
+                await process.WaitForExitAsync().ConfigureAwait(false);
                 return process.ExitCode == 0;
             }
             catch (Exception ex)
@@ -382,7 +226,7 @@ namespace VideoJockey.Services
                 return false;
             }
         }
-        
+
         public async Task<string> GetVersionAsync()
         {
             try
@@ -396,14 +240,15 @@ namespace VideoJockey.Services
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                
+
                 using var process = Process.Start(processStartInfo);
                 if (process == null)
+                {
                     return "Unknown";
-                
-                var version = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-                
+                }
+
+                var version = await process.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
+                await process.WaitForExitAsync().ConfigureAwait(false);
                 return version.Trim();
             }
             catch (Exception ex)
@@ -412,36 +257,259 @@ namespace VideoJockey.Services
                 return "Unknown";
             }
         }
-        
-        private void ParseProgress(string line, IProgress<DownloadProgress>? progress)
+
+        private YoutubeDL CreateClient(string? outputFolder, DownloadWorkerOptions workerOptions)
         {
-            if (progress == null) return;
-            
-            var match = ProgressRegex.Match(line);
-            if (match.Success)
+            var client = new YoutubeDL
             {
-                var downloadProgress = new DownloadProgress
+                YoutubeDLPath = _ytDlpPath,
+                FFmpegPath = _settingsProvider.GetFfmpegPath(),
+                OutputFolder = outputFolder ?? AppDomain.CurrentDomain.BaseDirectory,
+                OutputFileTemplate = "%(title)s.%(ext)s"
+            };
+
+            return client;
+        }
+
+        private OptionSet BuildBaseOptionSet(DownloadWorkerOptions workerOptions)
+        {
+            var options = new OptionSet
+            {
+                NoWarnings = true,
+                NoPlaylist = true,
+                Color = "no_color",
+                IgnoreConfig = true,
+                RestrictFilenames = false,
+                Progress = true,
+                Newline = true
+            };
+
+            if (!string.IsNullOrWhiteSpace(workerOptions.BandwidthLimit))
+            {
+                var limitBytes = ParseSizeToBytes(workerOptions.BandwidthLimit);
+                if (limitBytes.HasValue)
                 {
-                    Status = "Downloading",
-                    Percentage = double.Parse(match.Groups[1].Value),
-                    DownloadSpeed = match.Groups[3].Value,
-                    ETA = match.Groups[4].Value
+                    options.LimitRate = limitBytes.Value;
+                }
+            }
+
+            return options;
+        }
+
+        private OptionSet BuildDownloadOptionSet(string outputDirectory, DownloadWorkerOptions workerOptions)
+        {
+            var options = BuildBaseOptionSet(workerOptions);
+            options.Output = Path.Combine(outputDirectory, "%(title)s.%(ext)s");
+            options.MergeOutputFormat = DownloadMergeFormat.Mp4;
+            options.FfmpegLocation = _settingsProvider.GetFfmpegPath();
+            var tempPath = ResolvePath(workerOptions.TempDirectory ?? Path.Combine(workerOptions.OutputDirectory, "tmp"));
+            Directory.CreateDirectory(tempPath);
+            options.Paths = $"temp:{tempPath}";
+            return options;
+        }
+
+        private async Task<YtDlpVideoMetadata?> TryGetMetadataAsync(
+            string url,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await GetVideoMetadataAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Metadata lookup failed for {Url}", url);
+                return null;
+            }
+        }
+
+        private string? ResolveDownloadedFilePath(string? reportedPath, string outputDirectory, YtDlpVideoMetadata? metadata)
+        {
+            if (!Directory.Exists(outputDirectory))
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(reportedPath))
+            {
+                var path = Path.IsPathRooted(reportedPath)
+                    ? reportedPath
+                    : Path.Combine(outputDirectory, reportedPath);
+
+                if (File.Exists(path))
+                {
+                    return Path.GetFullPath(path);
+                }
+            }
+
+            if (metadata != null && !string.IsNullOrWhiteSpace(metadata.Title))
+            {
+                var normalizedTitle = SanitizeFileName(metadata.Title);
+                var candidates = Directory.GetFiles(outputDirectory, $"{normalizedTitle}*");
+                if (candidates.Length > 0)
+                {
+                    return candidates
+                        .OrderByDescending(File.GetLastWriteTimeUtc)
+                        .First();
+                }
+            }
+
+            var fallback = Directory.GetFiles(outputDirectory)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+
+            return fallback;
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder(value.Length);
+            foreach (var ch in value)
+            {
+                builder.Append(invalidChars.Contains(ch) ? '_' : ch);
+            }
+
+            return builder.ToString();
+        }
+
+        private static long? ParseSizeToBytes(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            value = value.Trim();
+            if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var raw))
+            {
+                return raw;
+            }
+
+            try
+            {
+                var numberPart = new string(value.TakeWhile(c => char.IsDigit(c) || c == '.' || c == ',').ToArray());
+                var unitPart = value[numberPart.Length..].Trim().ToUpperInvariant();
+
+                if (!double.TryParse(numberPart, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+                {
+                    return null;
+                }
+
+                return unitPart switch
+                {
+                    "KIB" or "KB" => (long)(number * 1024),
+                    "MIB" or "MB" => (long)(number * 1024 * 1024),
+                    "GIB" or "GB" => (long)(number * 1024 * 1024 * 1024),
+                    _ => (long)number
                 };
-                
-                progress.Report(downloadProgress);
             }
-            else if (line.Contains("[download] Destination:"))
+            catch
             {
-                progress.Report(new DownloadProgress { Status = "Starting download", Percentage = 0 });
+                return null;
             }
-            else if (line.Contains("[Merger]"))
+        }
+
+    private CoreSearchResult MapSearchResult(VideoData data)
+    {
+        var metadata = MapMetadata(data);
+        return new CoreSearchResult
+        {
+            Id = metadata.Id,
+            Title = metadata.Title,
+            Channel = metadata.Channel,
+            ThumbnailUrl = metadata.ThumbnailUrl,
+            Duration = metadata.Duration,
+            Url = !string.IsNullOrWhiteSpace(data.WebpageUrl)
+                ? data.WebpageUrl
+                : $"https://www.youtube.com/watch?v={metadata.Id}",
+            UploadDate = metadata.UploadDate,
+            ViewCount = metadata.ViewCount
+        };
+    }
+
+        private YtDlpVideoMetadata MapMetadata(VideoData data)
+        {
+            var metadata = new YtDlpVideoMetadata
             {
-                progress.Report(new DownloadProgress { Status = "Merging audio and video", Percentage = 100 });
-            }
-            else if (line.Contains("[ExtractAudio]"))
+                Id = data.ID ?? string.Empty,
+                Title = data.Title ?? string.Empty,
+                Artist = data.Artist ?? data.Uploader ?? data.Channel,
+                Channel = data.Channel,
+                Description = data.Description,
+                Duration = data.Duration.HasValue ? TimeSpan.FromSeconds(data.Duration.Value) : (TimeSpan?)null,
+                UploadDate = data.UploadDate,
+                Tags = data.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList() ?? new List<string>(),
+                ThumbnailUrl = data.Thumbnail,
+                ViewCount = data.ViewCount,
+                LikeCount = data.LikeCount
+            };
+
+            var primaryFormat = data.Formats?
+                .Where(f => f != null)
+                .OrderByDescending(f => f.Height ?? 0)
+                .ThenByDescending(f => f.Width ?? 0)
+                .ThenByDescending(f => f.Bitrate ?? 0)
+                .FirstOrDefault();
+
+            if (primaryFormat != null)
             {
-                progress.Report(new DownloadProgress { Status = "Extracting audio", Percentage = 95 });
+                metadata.Width = primaryFormat.Width;
+                metadata.Height = primaryFormat.Height;
+                metadata.Fps = primaryFormat.FrameRate;
+                metadata.VideoCodec = primaryFormat.VideoCodec;
+                metadata.AudioCodec = primaryFormat.AudioCodec;
+                metadata.FileSize = primaryFormat.FileSize ?? primaryFormat.ApproximateFileSize;
             }
+
+            return metadata;
+        }
+
+        private static string FormatErrorOutput(string[]? errorOutput)
+        {
+            if (errorOutput == null || errorOutput.Length == 0)
+            {
+                return "Unknown error";
+            }
+
+            return string.Join(Environment.NewLine, errorOutput);
+        }
+
+        private string ResolvePath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return AppDomain.CurrentDomain.BaseDirectory;
+            }
+
+            var resolved = Path.IsPathRooted(path)
+                ? path
+                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+
+            return Path.GetFullPath(resolved);
+        }
+
+        private string GetYtDlpPath()
+        {
+            var lookupPaths = new[]
+            {
+                "/usr/local/bin/yt-dlp",
+                "/usr/bin/yt-dlp",
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp"),
+                "yt-dlp"
+            };
+
+            foreach (var path in lookupPaths)
+            {
+                if (File.Exists(path))
+                {
+                    _logger.LogInformation("Using yt-dlp executable at {Path}", path);
+                    return path;
+                }
+            }
+
+            _logger.LogWarning("yt-dlp executable not found in common locations; relying on PATH resolution");
+            return "yt-dlp";
         }
     }
 }

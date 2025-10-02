@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -16,35 +17,64 @@ namespace VideoJockey.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<DownloadQueueService> _logger;
+        private readonly IDownloadTaskQueue _taskQueue;
+        private readonly IDownloadSettingsProvider _settingsProvider;
         
-        public DownloadQueueService(IUnitOfWork unitOfWork, ILogger<DownloadQueueService> logger)
+        public DownloadQueueService(
+            IUnitOfWork unitOfWork,
+            ILogger<DownloadQueueService> logger,
+            IDownloadTaskQueue taskQueue,
+            IDownloadSettingsProvider settingsProvider)
         {
             _unitOfWork = unitOfWork;
             _logger = logger;
+            _taskQueue = taskQueue;
+            _settingsProvider = settingsProvider;
         }
         
         public async Task<DownloadQueueItem> AddToQueueAsync(
-            string url, 
+            string url,
             string outputPath,
             string? format = null,
-            int priority = 0)
+            int priority = 0,
+            string? title = null)
         {
             try
             {
+                var options = _settingsProvider.GetOptions();
+                var resolvedOutputPath = string.IsNullOrWhiteSpace(outputPath)
+                    ? options.OutputDirectory
+                    : outputPath;
+
+                if (!Path.IsPathRooted(resolvedOutputPath))
+                {
+                    resolvedOutputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, resolvedOutputPath);
+                }
+
+                Directory.CreateDirectory(resolvedOutputPath);
+
                 var queueItem = new DownloadQueue
                 {
                     Url = url,
-                    OutputPath = outputPath,
-                    Format = format,
+                    OutputPath = resolvedOutputPath,
+                    Format = string.IsNullOrWhiteSpace(format) ? options.Format : format,
                     Priority = priority,
                     Status = DownloadStatusEnum.Queued,
                     AddedDate = DateTime.UtcNow,
                     RetryCount = 0,
-                    IsDeleted = false
+                    IsDeleted = false,
+                    UpdatedAt = DateTime.UtcNow
                 };
+                
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    queueItem.Title = title;
+                }
                 
                 await _unitOfWork.DownloadQueueItems.AddAsync(queueItem);
                 await _unitOfWork.SaveChangesAsync();
+
+                await _taskQueue.QueueAsync(queueItem.Id);
                 
                 _logger.LogInformation("Added URL to download queue: {Url}", url);
                 return queueItem;
@@ -57,12 +87,13 @@ namespace VideoJockey.Services
         }
         
         public async Task<DownloadQueueItem> AddToQueueAsync(
-            string url, 
+            string url,
             string? customTitle = null,
             int priority = 0)
         {
             // Overload for backward compatibility
-            return await AddToQueueAsync(url, "downloads", null, priority);
+            var options = _settingsProvider.GetOptions();
+            return await AddToQueueAsync(url, options.OutputDirectory, null, priority, customTitle);
         }
         
         public async Task<List<DownloadQueueItem>> GetPendingDownloadsAsync()
@@ -127,6 +158,7 @@ namespace VideoJockey.Services
                 {
                     item.Status = status;
                     item.ErrorMessage = errorMessage;
+                    item.UpdatedAt = DateTime.UtcNow;
                     
                     if (status == DownloadStatusEnum.Downloading)
                     {
@@ -162,9 +194,10 @@ namespace VideoJockey.Services
                 
                 if (item != null)
                 {
-                    item.Progress = progress;
+                    item.Progress = Math.Clamp(progress, 0, 100);
                     item.DownloadSpeed = downloadSpeed;
                     item.ETA = eta;
+                    item.UpdatedAt = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                     await _unitOfWork.SaveChangesAsync();
                 }
@@ -186,6 +219,7 @@ namespace VideoJockey.Services
                 {
                     item.IsDeleted = true;
                     item.DeletedDate = DateTime.UtcNow;
+                    item.UpdatedAt = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                     await _unitOfWork.SaveChangesAsync();
                     _logger.LogInformation("Removed queue item: {Id}", queueId);
@@ -214,8 +248,12 @@ namespace VideoJockey.Services
                     item.StartedDate = null;
                     item.CompletedDate = null;
                     item.Progress = 0;
+                    item.DownloadSpeed = null;
+                    item.ETA = null;
+                    item.UpdatedAt = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                     await _unitOfWork.SaveChangesAsync();
+                    await _taskQueue.QueueAsync(queueId);
                     
                     _logger.LogInformation("Retrying download {QueueId} (attempt #{RetryCount})", 
                         queueId, item.RetryCount);
@@ -241,6 +279,7 @@ namespace VideoJockey.Services
                 {
                     item.IsDeleted = true;
                     item.DeletedDate = DateTime.UtcNow;
+                    item.UpdatedAt = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                 }
 
@@ -352,8 +391,8 @@ namespace VideoJockey.Services
         // IDownloadQueueService implementation
         public async Task<DownloadQueueItem> AddToQueueAsync(string url, int priority = 5)
         {
-            var result = await AddToQueueAsync(url, "downloads", null, priority);
-            return result;
+            var options = _settingsProvider.GetOptions();
+            return await AddToQueueAsync(url, options.OutputDirectory, null, priority);
         }
 
         public async Task<DownloadQueueItem?> GetNextQueueItemAsync()
@@ -376,6 +415,35 @@ namespace VideoJockey.Services
             return await GetQueueItemAsync(id, track: false);
         }
 
+        public async Task UpdateFilePathAsync(Guid itemId, string? filePath, string? outputPath = null)
+        {
+            try
+            {
+                var item = await GetQueueItemAsync(itemId, track: true);
+
+                if (item == null)
+                {
+                    return;
+                }
+
+                item.FilePath = filePath;
+
+                if (!string.IsNullOrWhiteSpace(outputPath))
+                {
+                    item.OutputPath = outputPath;
+                }
+
+                item.UpdatedAt = DateTime.UtcNow;
+                await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating queue item file path: {Id}", itemId);
+                throw;
+            }
+        }
+
         public async Task MarkAsCompletedAsync(Guid itemId, Guid? videoId = null)
         {
             await UpdateQueueItemStatusAsync(itemId, DownloadStatusEnum.Completed, null);
@@ -386,6 +454,7 @@ namespace VideoJockey.Services
                 if (item != null)
                 {
                     item.VideoId = videoId;
+                    item.UpdatedAt = DateTime.UtcNow;
                     await _unitOfWork.DownloadQueueItems.UpdateAsync(item);
                     await _unitOfWork.SaveChangesAsync();
                 }

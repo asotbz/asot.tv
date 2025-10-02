@@ -1,3 +1,4 @@
+using System;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using VideoJockey.Web.Hubs;
@@ -72,6 +73,10 @@ try
     builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
+
+    // Shared services
+    builder.Services.AddSingleton<IDownloadTaskQueue, DownloadTaskQueue>();
+    builder.Services.AddSingleton<IDownloadSettingsProvider, DownloadSettingsProvider>();
 
     // Register Services
     builder.Services.AddScoped<IYtDlpService, YtDlpService>();
