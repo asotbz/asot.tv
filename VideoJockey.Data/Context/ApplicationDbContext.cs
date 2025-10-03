@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using VideoJockey.Core.Entities;
 
 namespace VideoJockey.Data.Context
 {
-    public class ApplicationDbContext : DbContext
+    public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
@@ -21,6 +23,7 @@ namespace VideoJockey.Data.Context
         public DbSet<CollectionVideo> CollectionVideos { get; set; } = null!;
         public DbSet<SavedSearch> SavedSearches { get; set; } = null!;
         public DbSet<ActivityLog> ActivityLogs { get; set; } = null!;
+        public DbSet<UserPreference> UserPreferences { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -211,6 +214,20 @@ namespace VideoJockey.Data.Context
                 entity.HasIndex(e => e.Action);
                 entity.HasIndex(e => new { e.EntityType, e.EntityId });
                 entity.HasIndex(e => e.IsSuccess);
+            });
+
+            // Configure UserPreference entity
+            modelBuilder.Entity<UserPreference>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Key).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Value).IsRequired();
+                entity.HasIndex(e => new { e.UserId, e.Key }).IsUnique();
+
+                entity.HasOne(e => e.User)
+                    .WithMany(u => u.Preferences)
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Seed initial configuration data with static dates

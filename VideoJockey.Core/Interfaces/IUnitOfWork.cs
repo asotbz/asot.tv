@@ -50,6 +50,11 @@ namespace VideoJockey.Core.Interfaces
         IRepository<CollectionVideo> CollectionVideos { get; }
 
         /// <summary>
+        /// Repository for user preference key/value pairs
+        /// </summary>
+        IRepository<UserPreference> UserPreferences { get; }
+
+        /// <summary>
         /// Save all changes to the database
         /// </summary>
         Task<int> SaveChangesAsync();

@@ -1,3 +1,4 @@
+@page "/"
 @page "/dashboard"
 @using VideoJockey.Core.Interfaces
 @using VideoJockey.Core.Entities
@@ -86,6 +87,38 @@
                                 <MudText Typo="Typo.body2" Color="Color.Secondary">Storage Used</MudText>
                             </div>
                         </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12">
+                <MudCard>
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
+                        <MudGrid>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" FullWidth="true" Href="/videos/add">
+                                    Add Video
+                                </MudButton>
+                            </MudItem>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Download" FullWidth="true" Href="/downloads/new">
+                                    New Download
+                                </MudButton>
+                            </MudItem>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Upload" FullWidth="true" Href="/import">
+                                    Import Collection
+                                </MudButton>
+                            </MudItem>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Settings" FullWidth="true" Href="/settings">
+                                    Settings
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
                     </MudCardContent>
                 </MudCard>
             </MudItem>

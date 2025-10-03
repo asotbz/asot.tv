@@ -1,10 +1,7 @@
 ﻿@using MudBlazor
 
 <MudNavMenu>
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
-        Home
-    </MudNavLink>
-    <MudNavLink Href="/dashboard" Icon="@Icons.Material.Filled.Dashboard">
+    <MudNavLink Href="/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
         Dashboard
     </MudNavLink>
     <MudNavLink Href="/videos" Icon="@Icons.Material.Filled.VideoLibrary">
@@ -18,6 +15,9 @@
     </MudNavLink>
     <MudNavLink Href="/downloads" Icon="@Icons.Material.Filled.CloudDownload">
         Downloads
+    </MudNavLink>
+    <MudNavLink Href="/profile" Icon="@Icons.Material.Filled.ManageAccounts">
+        My Account
     </MudNavLink>
     <MudNavGroup Title="Manage" Icon="@Icons.Material.Filled.Folder" Expanded="false">
         <MudNavLink Href="/collections" Icon="@Icons.Material.Filled.Collections">

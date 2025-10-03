@@ -1,14 +1,18 @@
 @page "/setup"
+@attribute [AllowAnonymous]
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Web
 @using VideoJockey.Core.Entities
 @using VideoJockey.Core.Interfaces
 @using Microsoft.Extensions.Logging
 @using MudBlazor
+@using System.ComponentModel.DataAnnotations
 @inject IUnitOfWork UnitOfWork
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject ILogger<Setup> Logger
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole<Guid>> RoleManager
 
 <PageTitle>Initial Setup - VideoJockey</PageTitle>
 
@@ -21,11 +25,11 @@
             </MudText>
 
             <!-- Progress Indicator -->
-            <MudProgressLinear Value="@(_currentStep * 25)" Class="mb-4" Color="Color.Primary" />
+            <MudProgressLinear Value="@(_currentStep * (100.0 / _totalSteps))" Class="mb-4" Color="Color.Primary" />
             
             <!-- Step Indicator -->
             <MudText Typo="Typo.h6" Class="mb-4">
-                Step @_currentStep of 4: @GetStepTitle()
+                Step @_currentStep of @_totalSteps: @GetStepTitle()
             </MudText>
 
             <!-- Step 1: Library Settings -->
@@ -149,8 +153,59 @@
                 </MudGrid>
             }
 
-            <!-- Step 4: Review Settings -->
+            <!-- Step 4: Administrator Account -->
             @if (_currentStep == 4)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.h6" Class="mb-2">Create administrator account</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-4">
+                            This account will have full access to system settings. You can add more users later.
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_adminDisplayName"
+                                      Label="Display name"
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_adminEmail"
+                                      Label="Email address"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Email"
+                                      Required="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_adminPassword"
+                                      Label="Password"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Password"
+                                      Required="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_adminPasswordConfirm"
+                                      Label="Confirm password"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Password"
+                                      Required="true"
+                                      Error="@_passwordMismatch"
+                                      ErrorText="Passwords do not match"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Elevation="0">
+                            Your password must be at least 8 characters long. Consider using a passphrase for better security.
+                        </MudAlert>
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <!-- Step 4: Review Settings -->
+            @if (_currentStep == 5)
             {
                 <MudGrid>
                     <MudItem xs="12">
@@ -191,6 +246,14 @@
                                     <td><strong>Generate NFO Files</strong></td>
                                     <td>@(_generateNfo ? "Yes" : "No")</td>
                                 </tr>
+                                <tr>
+                                    <td><strong>Admin Display Name</strong></td>
+                                    <td>@_adminDisplayName</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Admin Email</strong></td>
+                                    <td>@_adminEmail</td>
+                                </tr>
                             </tbody>
                         </MudSimpleTable>
                     </MudItem>
@@ -208,7 +271,7 @@
                     }
                 </MudItem>
                 <MudItem xs="6" Class="d-flex justify-end">
-                    @if (_currentStep < 4)
+                    @if (_currentStep < _totalSteps)
                     {
                         <MudButton Variant="Variant.Filled" Color="Color.Primary" ButtonType="ButtonType.Button" OnClick="@NextStep">
                             Next
@@ -242,6 +305,8 @@
 @code {
     private bool _isSaving = false;
     private int _currentStep = 1;
+    private const int _totalSteps = 5;
+    private static readonly EmailAddressAttribute EmailValidator = new();
     
     // Library Settings
     private string _libraryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "VideoJockey", "Library");
@@ -260,6 +325,14 @@
     private string? _imvdbApiKey;
     private string _musicBrainzUserAgent = "VideoJockey/1.0";
     private bool _enableOnlineMetadata = true;
+
+    // Administrator account
+    private string _adminDisplayName = "Administrator";
+    private string _adminEmail = string.Empty;
+    private string _adminPassword = string.Empty;
+    private string _adminPasswordConfirm = string.Empty;
+
+    private bool _passwordMismatch => !string.IsNullOrEmpty(_adminPassword) && !string.Equals(_adminPassword, _adminPasswordConfirm, StringComparison.Ordinal);
 
     protected override async Task OnInitializedAsync()
     {
@@ -282,127 +355,87 @@
         
         try
         {
-            var configurations = new List<Configuration>
+            if (string.IsNullOrWhiteSpace(_adminDisplayName) ||
+                string.IsNullOrWhiteSpace(_adminEmail) ||
+                string.IsNullOrWhiteSpace(_adminPassword))
             {
-                // Library Settings
-                new Configuration 
-                { 
-                    Key = "LibraryPath", 
-                    Value = _libraryPath, 
-                    Category = "Storage",
-                    Description = "Main library path for organized videos"
-                },
-                new Configuration 
-                { 
-                    Key = "DownloadsPath", 
-                    Value = _downloadsPath, 
-                    Category = "Storage",
-                    Description = "Temporary path for downloads"
-                },
-                new Configuration 
-                { 
-                    Key = "NamingPattern", 
-                    Value = _namingPattern, 
-                    Category = "Organization",
-                    Description = "File naming pattern for organized videos"
-                },
-                
-                // Download Settings
-                new Configuration 
-                { 
-                    Key = "DefaultVideoFormat", 
-                    Value = _defaultVideoFormat, 
-                    Category = "Download",
-                    Description = "Preferred video format for downloads"
-                },
-                new Configuration 
-                { 
-                    Key = "DefaultVideoQuality", 
-                    Value = _defaultVideoQuality, 
-                    Category = "Download",
-                    Description = "Maximum video quality for downloads"
-                },
-                new Configuration 
-                { 
-                    Key = "MaxConcurrentDownloads", 
-                    Value = _maxConcurrentDownloads.ToString(), 
-                    Category = "Download",
-                    Description = "Maximum number of concurrent downloads"
-                },
-                new Configuration 
-                { 
-                    Key = "DownloadRetries", 
-                    Value = _downloadRetries.ToString(), 
-                    Category = "Download",
-                    Description = "Number of retry attempts for failed downloads"
-                },
-                new Configuration 
-                { 
-                    Key = "ExtractMetadata", 
-                    Value = _extractMetadata.ToString(), 
-                    Category = "Download",
-                    Description = "Extract metadata from downloaded files"
-                },
-                new Configuration 
-                { 
-                    Key = "GenerateNfo", 
-                    Value = _generateNfo.ToString(), 
-                    Category = "Metadata",
-                    Description = "Generate NFO files for media center compatibility"
-                },
-                
-                // API Settings
-                new Configuration 
-                { 
-                    Key = "EnableOnlineMetadata", 
-                    Value = _enableOnlineMetadata.ToString(), 
-                    Category = "Metadata",
-                    Description = "Enable fetching metadata from online sources"
-                },
-                new Configuration 
-                { 
-                    Key = "MusicBrainzUserAgent", 
-                    Value = _musicBrainzUserAgent, 
-                    Category = "API",
-                    Description = "User agent for MusicBrainz API requests"
-                },
-                
-                // Mark setup as complete
-                new Configuration 
-                { 
-                    Key = "SetupComplete", 
-                    Value = "true", 
-                    Category = "System",
-                    Description = "Indicates whether initial setup has been completed"
-                }
-            };
-            
-            // Add IMVDb API key if provided
+                Snackbar.Add("Please complete the administrator account details.", Severity.Warning);
+                _isSaving = false;
+                return;
+            }
+
+            _adminEmail = _adminEmail.Trim();
+            if (!EmailValidator.IsValid(_adminEmail))
+            {
+                Snackbar.Add("Enter a valid administrator email address.", Severity.Warning);
+                _isSaving = false;
+                return;
+            }
+
+            if (_passwordMismatch)
+            {
+                Snackbar.Add("Administrator passwords do not match.", Severity.Error);
+                _isSaving = false;
+                return;
+            }
+
+            if (_adminPassword.Length < 8)
+            {
+                Snackbar.Add("Administrator password must be at least 8 characters.", Severity.Warning);
+                _isSaving = false;
+                return;
+            }
+
+            await UpsertConfigurationAsync("LibraryPath", "Storage", _libraryPath, "Main library path for organized videos");
+            await UpsertConfigurationAsync("DownloadsPath", "Storage", _downloadsPath, "Temporary path for downloads");
+            await UpsertConfigurationAsync("NamingPattern", "Organization", _namingPattern, "File naming pattern for organized videos");
+
+            await UpsertConfigurationAsync("DefaultVideoFormat", "Download", _defaultVideoFormat, "Preferred video format for downloads");
+            await UpsertConfigurationAsync("DefaultVideoQuality", "Download", _defaultVideoQuality, "Maximum video quality for downloads");
+            await UpsertConfigurationAsync("MaxConcurrentDownloads", "Download", _maxConcurrentDownloads.ToString(), "Maximum number of concurrent downloads");
+            await UpsertConfigurationAsync("DownloadRetries", "Download", _downloadRetries.ToString(), "Number of retry attempts for failed downloads");
+            await UpsertConfigurationAsync("ExtractMetadata", "Download", _extractMetadata.ToString(), "Extract metadata from downloaded files");
+            await UpsertConfigurationAsync("GenerateNfo", "Metadata", _generateNfo.ToString(), "Generate NFO files for media center compatibility");
+
+            await UpsertConfigurationAsync("EnableOnlineMetadata", "Metadata", _enableOnlineMetadata.ToString(), "Enable fetching metadata from online sources");
+            await UpsertConfigurationAsync("MusicBrainzUserAgent", "API", _musicBrainzUserAgent, "User agent for MusicBrainz API requests");
+
+            await UpsertConfigurationAsync("IsFirstRun", "System", "false", "Indicates if this is the first run", isSystem: true);
+            await UpsertConfigurationAsync("SetupComplete", "System", "true", "Indicates whether initial setup has been completed", isSystem: true);
+
             if (!string.IsNullOrWhiteSpace(_imvdbApiKey))
             {
-                configurations.Add(new Configuration 
-                { 
-                    Key = "ImvdbApiKey", 
-                    Value = _imvdbApiKey, 
-                    Category = "API",
-                    Description = "API key for IMVDb service"
-                });
+                await UpsertConfigurationAsync("ImvdbApiKey", "API", _imvdbApiKey, "API key for IMVDb service", isEncrypted: true);
             }
-            
-            // Save all configurations
-            await UnitOfWork.Configurations.AddRangeAsync(configurations);
+
             await UnitOfWork.SaveChangesAsync();
+            Logger.LogInformation("Setup configuration values saved for library path {LibraryPath} and downloads path {DownloadsPath}.", _libraryPath, _downloadsPath);
             
             // Create directories
             Directory.CreateDirectory(_libraryPath);
             Directory.CreateDirectory(_downloadsPath);
-            
+
+            var adminUser = await EnsureAdministratorAccountAsync();
+            if (adminUser is null)
+            {
+                _isSaving = false;
+                return;
+            }
+
+            var signInToken = Guid.NewGuid().ToString("N");
+            await UpsertConfigurationAsync("SetupSignInToken", "System", $"{signInToken}|{adminUser.Id}", "Temporary sign-in token for initial administrator bootstrap", isSystem: true);
+            await UnitOfWork.SaveChangesAsync();
+
+            Logger.LogInformation("Generated setup sign-in token for administrator {AdminEmail}", adminUser.Email);
             Snackbar.Add("Setup completed successfully!", Severity.Success);
-            Navigation.NavigateTo("/");
+            _isSaving = false;
+            await InvokeAsync(() => Navigation.NavigateTo($"/auth/setup-complete?token={signInToken}", forceLoad: true));
+            return;
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error saving configuration: {ex.Message}", Severity.Error);
+            Logger.LogError(ex, "Setup wizard failed while finalizing configuration");
         }
         finally
         {
@@ -414,7 +447,7 @@
     {
         Logger.LogInformation("NextStep invoked while on step {Step}", _currentStep);
 
-        if (_currentStep < 4)
+        if (_currentStep < _totalSteps)
         {
             _currentStep++;
             Logger.LogInformation("Advanced to step {Step}", _currentStep);
@@ -447,8 +480,160 @@
             1 => "Library Settings",
             2 => "Download Settings",
             3 => "API Settings (Optional)",
-            4 => "Review & Complete",
+            4 => "Administrator Account",
+            5 => "Review & Complete",
             _ => ""
         };
+    }
+
+    private async Task UpsertConfigurationAsync(string key, string category, string value, string? description = null, bool isEncrypted = false, bool isSystem = false)
+    {
+        var existing = await UnitOfWork.Configurations.FirstOrDefaultAsync(c => c.Key == key && c.Category == category);
+
+        if (existing is null)
+        {
+            var configuration = new Configuration
+            {
+                Key = key,
+                Category = category,
+                Value = value,
+                Description = description,
+                IsEncrypted = isEncrypted,
+                IsSystem = isSystem,
+                IsActive = true
+            };
+
+            await UnitOfWork.Configurations.AddAsync(configuration);
+        }
+        else
+        {
+            existing.Value = value;
+            existing.Description = description;
+            existing.IsEncrypted = isEncrypted;
+            existing.IsSystem = isSystem;
+            existing.IsActive = true;
+
+            await UnitOfWork.Configurations.UpdateAsync(existing);
+        }
+    }
+
+    private async Task<ApplicationUser?> EnsureAdministratorAccountAsync()
+    {
+        const string adminRoleName = "Admin";
+
+        if (!await RoleManager.RoleExistsAsync(adminRoleName))
+        {
+            var roleResult = await RoleManager.CreateAsync(new IdentityRole<Guid>(adminRoleName));
+            if (!roleResult.Succeeded)
+            {
+                foreach (var error in roleResult.Errors)
+                {
+                    Snackbar.Add(error.Description, Severity.Error);
+                }
+                return null;
+            }
+            Logger.LogInformation("Created administrator role {RoleName}", adminRoleName);
+        }
+
+        var adminEmail = _adminEmail.Trim();
+        var adminDisplayName = _adminDisplayName.Trim();
+
+        var adminUser = await UserManager.FindByEmailAsync(adminEmail);
+        if (adminUser is null)
+        {
+            adminUser = new ApplicationUser
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                DisplayName = adminDisplayName,
+                EmailConfirmed = true,
+                IsActive = true,
+                LockoutEnabled = false,
+                LastLoginAt = DateTime.UtcNow
+            };
+
+            var createResult = await UserManager.CreateAsync(adminUser, _adminPassword);
+            if (!createResult.Succeeded)
+            {
+                foreach (var error in createResult.Errors)
+                {
+                    Snackbar.Add(error.Description, Severity.Error);
+                }
+                return null;
+            }
+            Logger.LogInformation("Created administrator account {AdminEmail}", adminEmail);
+        }
+        else
+        {
+            adminUser.DisplayName = adminDisplayName;
+            adminUser.EmailConfirmed = true;
+            adminUser.IsActive = true;
+            adminUser.LockoutEnabled = false;
+            adminUser.LockoutEnd = null;
+            adminUser.LastLoginAt = DateTime.UtcNow;
+
+            var updateResult = await UserManager.UpdateAsync(adminUser);
+            if (!updateResult.Succeeded)
+            {
+                foreach (var error in updateResult.Errors)
+                {
+                    Snackbar.Add(error.Description, Severity.Error);
+                }
+                return null;
+            }
+
+            var resetResult = await SetPasswordAsync(adminUser, _adminPassword);
+            if (!resetResult.Succeeded)
+            {
+                foreach (var error in resetResult.Errors)
+                {
+                    Snackbar.Add(error.Description, Severity.Error);
+                }
+                return null;
+            }
+            Logger.LogInformation("Updated administrator account {AdminEmail}", adminEmail);
+        }
+
+        await UserManager.SetLockoutEnabledAsync(adminUser, false);
+        await UserManager.SetLockoutEndDateAsync(adminUser, null);
+        await UserManager.ResetAccessFailedCountAsync(adminUser);
+        Logger.LogInformation("Cleared lockout state for administrator {AdminEmail}", adminEmail);
+
+        var finalUpdate = await UserManager.UpdateAsync(adminUser);
+        if (!finalUpdate.Succeeded)
+        {
+            foreach (var error in finalUpdate.Errors)
+            {
+                Snackbar.Add(error.Description, Severity.Error);
+            }
+            return null;
+        }
+
+        if (!await UserManager.IsInRoleAsync(adminUser, adminRoleName))
+        {
+            var roleResult = await UserManager.AddToRoleAsync(adminUser, adminRoleName);
+            if (!roleResult.Succeeded)
+            {
+                foreach (var error in roleResult.Errors)
+                {
+                    Snackbar.Add(error.Description, Severity.Error);
+                }
+                return null;
+            }
+            Logger.LogInformation("Assigned administrator role {RoleName} to {AdminEmail}", adminRoleName, adminEmail);
+        }
+
+        return adminUser;
+    }
+
+    private async Task<IdentityResult> SetPasswordAsync(ApplicationUser user, string password)
+    {
+        if (await UserManager.HasPasswordAsync(user))
+        {
+            var resetToken = await UserManager.GeneratePasswordResetTokenAsync(user);
+            return await UserManager.ResetPasswordAsync(user, resetToken, password);
+        }
+
+        return await UserManager.AddPasswordAsync(user, password);
     }
 }

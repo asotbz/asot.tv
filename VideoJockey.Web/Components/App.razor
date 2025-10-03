@@ -15,10 +15,12 @@
 </head>
 
 <body>
-    <MudThemeProvider />
-    <MudDialogProvider />
-    <MudSnackbarProvider />
-    <Routes @rendermode="InteractiveServer" />
+    <CascadingAuthenticationState>
+        <MudThemeProvider />
+        <MudDialogProvider />
+        <MudSnackbarProvider />
+        <Routes @rendermode="InteractiveServer" />
+    </CascadingAuthenticationState>
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>

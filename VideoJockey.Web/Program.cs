@@ -1,17 +1,21 @@
 using System;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VideoJockey.Web.Hubs;
 using MudBlazor.Services;
 using Serilog;
 using Serilog.Events;
+using VideoJockey.Core.Entities;
+using VideoJockey.Web.Identity;
+using VideoJockey.Web.Middleware;
+using VideoJockey.Web.Security;
 using VideoJockey.Core.Interfaces;
 using VideoJockey.Data.Context;
 using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
 using VideoJockey.Services.Interfaces;
 using VideoJockey.Services.Models;
-using VideoJockey.Web.Middleware;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -68,6 +72,53 @@ try
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory))
         .SetApplicationName("VideoJockey");
+
+    builder.Services.AddAntiforgery(options =>
+    {
+        options.Cookie.Name = AntiforgeryDefaults.CookieName;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.HeaderName = AntiforgeryDefaults.HeaderName;
+    });
+
+    var identityCoreBuilder = builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.Password.RequireDigit = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequiredLength = 8;
+        options.User.RequireUniqueEmail = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    });
+
+    identityCoreBuilder = identityCoreBuilder.AddRoles<IdentityRole<Guid>>();
+    identityCoreBuilder.AddEntityFrameworkStores<ApplicationDbContext>();
+    identityCoreBuilder.AddSignInManager();
+    identityCoreBuilder.AddDefaultTokenProviders();
+
+    builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, ApplicationUserClaimsPrincipalFactory>();
+
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = IdentityConstants.ApplicationScheme;
+        options.DefaultAuthenticateScheme = IdentityConstants.ApplicationScheme;
+        options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+    })
+    .AddCookie(IdentityConstants.ApplicationScheme, options =>
+    {
+        options.LoginPath = "/auth/login";
+        options.LogoutPath = "/auth/logout";
+        options.AccessDeniedPath = "/auth/access-denied";
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(14);
+    });
+
+    builder.Services.AddAuthorizationBuilder()
+        .AddPolicy("ActiveUser", policy => policy.RequireAuthenticatedUser())
+        .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+
 
     // Register repositories and Unit of Work
     builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
@@ -159,7 +210,11 @@ try
 
     app.UseHttpsRedirection();
     app.UseStaticFiles();
+    app.UseMiddleware<AntiforgeryCookieCleanupMiddleware>();
     app.UseAntiforgery();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
     
     // Use setup check middleware to redirect to setup if not configured
     app.UseSetupCheck();
@@ -179,6 +234,59 @@ try
         .AddInteractiveServerRenderMode();
 
     app.MapHub<VideoUpdatesHub>("/hubs/updates");
+
+    app.MapGet("/auth/setup-complete", async (
+        HttpContext httpContext,
+        string? token,
+        SignInManager<ApplicationUser> signInManager,
+        IUnitOfWork unitOfWork,
+        ILogger<Program> logger) =>
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            logger.LogWarning("Setup sign-in attempted without a token.");
+            return Results.Redirect("/auth/login");
+        }
+
+        var storedTokenConfig = await unitOfWork.Configurations
+            .FirstOrDefaultAsync(c => c.Key == "SetupSignInToken" && c.Category == "System" && c.IsActive);
+
+        if (storedTokenConfig?.Value is null)
+        {
+            logger.LogWarning("Setup sign-in token not found or already used.");
+            return Results.Redirect("/auth/login");
+        }
+
+        var tokenParts = storedTokenConfig.Value.Split('|', 2, StringSplitOptions.TrimEntries);
+        if (tokenParts.Length != 2 || !string.Equals(tokenParts[0], token, StringComparison.Ordinal))
+        {
+            logger.LogWarning("Setup sign-in token mismatch.");
+            return Results.Redirect("/auth/login");
+        }
+
+        var userId = tokenParts[1];
+        var user = await signInManager.UserManager.FindByIdAsync(userId);
+        if (user is null)
+        {
+            logger.LogWarning("Setup sign-in user not found for token.");
+            return Results.Redirect("/auth/login");
+        }
+
+        user.LockoutEnabled = false;
+        user.LockoutEnd = null;
+        await signInManager.UserManager.UpdateAsync(user);
+        await signInManager.UserManager.ResetAccessFailedCountAsync(user);
+
+        await signInManager.SignInAsync(user, isPersistent: true);
+        logger.LogInformation("Administrator {AdminEmail} signed in via setup completion endpoint.", user.Email);
+
+        storedTokenConfig.IsActive = false;
+        storedTokenConfig.Value = string.Empty;
+        await unitOfWork.Configurations.UpdateAsync(storedTokenConfig);
+        await unitOfWork.SaveChangesAsync();
+
+        return Results.Redirect("/dashboard");
+    }).AllowAnonymous();
 
     // Apply database migrations and check first run
     using (var scope = app.Services.CreateScope())

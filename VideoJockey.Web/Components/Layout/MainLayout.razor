@@ -14,8 +14,32 @@
         <MudText Typo="Typo.h5" Class="ml-3">Video Jockey</MudText>
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Inherit" OnClick="ShowKeyboardShortcuts" Title="Keyboard Shortcuts (F1)" />
-        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Inherit" />
-        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Color="Color.Inherit" />
+        <AuthorizeView>
+            <Authorized Context="auth">
+                <MudMenu AnchorOrigin="Origin.BottomRight"
+                         TransformOrigin="Origin.TopRight"
+                         Elevation="4">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Text" Color="Color.Inherit">
+                            <MudAvatar Size="Size.Medium" Color="Color.Primary" Class="mr-2">
+                                @GetInitials(auth.User)
+                            </MudAvatar>
+                            <MudText Typo="Typo.body1">@GetDisplayName(auth.User)</MudText>
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Href="/profile" Icon="@Icons.Material.Filled.ManageAccounts">Profile</MudMenuItem>
+                        <MudMenuItem Href="/settings" Icon="@Icons.Material.Filled.Settings">System settings</MudMenuItem>
+                        <MudMenuItem Href="/auth/logout" Icon="@Icons.Material.Filled.Logout">Sign out</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/auth/login">
+                    Sign in
+                </MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <MudDrawerHeader>
@@ -82,6 +106,34 @@
         var parameters = new DialogParameters();
         var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<KeyboardShortcutsDialog>("Keyboard Shortcuts", parameters, options);
+    }
+
+    private static string GetDisplayName(ClaimsPrincipal principal)
+    {
+        return principal.Identity?.Name ?? principal.FindFirstValue("name") ?? "User";
+    }
+
+    private static string GetInitials(ClaimsPrincipal principal)
+    {
+        var claimInitials = principal.FindFirstValue("vj:initials");
+        if (!string.IsNullOrWhiteSpace(claimInitials))
+        {
+            return claimInitials;
+        }
+
+        var name = GetDisplayName(principal);
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return "U";
+        }
+
+        if (parts.Length == 1)
+        {
+            return char.ToUpperInvariant(parts[0][0]).ToString();
+        }
+
+        return string.Concat(char.ToUpperInvariant(parts[0][0]), char.ToUpperInvariant(parts[^1][0]));
     }
 
     public ValueTask DisposeAsync()

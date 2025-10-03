@@ -22,6 +22,7 @@ namespace VideoJockey.Data.Repositories
         private IRepository<DownloadQueueItem>? _downloadQueueItems;
         private ICollectionRepository? _collections;
         private IRepository<CollectionVideo>? _collectionVideos;
+        private IRepository<UserPreference>? _userPreferences;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -36,6 +37,7 @@ namespace VideoJockey.Data.Repositories
         public IRepository<DownloadQueueItem> DownloadQueueItems => _downloadQueueItems ??= new Repository<DownloadQueueItem>(_context);
         public ICollectionRepository Collections => _collections ??= new CollectionRepository(_context);
         public IRepository<CollectionVideo> CollectionVideos => _collectionVideos ??= new Repository<CollectionVideo>(_context);
+        public IRepository<UserPreference> UserPreferences => _userPreferences ??= new Repository<UserPreference>(_context);
 
         public async Task<int> SaveChangesAsync()
         {

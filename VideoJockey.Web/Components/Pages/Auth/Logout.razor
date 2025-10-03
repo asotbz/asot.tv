@@ -1,0 +1,16 @@
+@page "/auth/logout"
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6" Style="text-align:center;">
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+    <MudText Typo="Typo.subtitle1" Class="mt-4">Signing you out...</MudText>
+</MudContainer>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/auth/login", true);
+    }
+}
