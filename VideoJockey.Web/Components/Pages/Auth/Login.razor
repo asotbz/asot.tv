@@ -1,11 +1,11 @@
-@page "/auth/login"
+@page "/auth/signin"
 @attribute [AllowAnonymous]
-@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.AspNetCore.Http
 @using Microsoft.AspNetCore.WebUtilities
-@inject SignInManager<ApplicationUser> SignInManager
-@inject UserManager<ApplicationUser> UserManager
+@inject IAntiforgery Antiforgery
+@inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
 @inject ILogger<Login> Logger
 
 <PageTitle>Sign In - VideoJockey</PageTitle>
@@ -14,74 +14,80 @@
     <MudPaper Elevation="4" Class="pa-6">
         <MudText Typo="Typo.h5" Class="mb-4">Sign in to VideoJockey</MudText>
 
-        <EditForm Model="_model" OnValidSubmit="HandleLoginAsync">
-            <DataAnnotationsValidator />
-            <MudAlert Severity="Severity.Error" Visible="ShowLockout" Class="mb-4">
-                Your account is temporarily locked due to multiple failed attempts. Please try again later.
-            </MudAlert>
+        <form method="post" action="/auth/login">
+            @if (!string.IsNullOrEmpty(_antiforgeryToken))
+            {
+                <input type="hidden" name="@_antiforgeryFieldName" value="@_antiforgeryToken" />
+            }
+            <input type="hidden" name="ReturnUrl" value="@GetSafeReturnUrl()" />
 
-            <MudTextField @bind-Value="_model.EmailOrUsername"
+            @if (_alertVisible && !string.IsNullOrWhiteSpace(_alertMessage))
+            {
+                <MudAlert Severity="_alertSeverity" Class="mb-4">
+                    @_alertMessage
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_emailOrUsername"
                           Label="Email or Username"
+                          name="EmailOrUsername"
                           Variant="Variant.Outlined"
                           Required="true"
-                          Immediate="true"
-                          Disabled="_isBusy"
                           @ref="_usernameField" />
 
-            <MudTextField @bind-Value="_model.Password"
+            <MudTextField @bind-Value="_password"
                           Label="Password"
+                          name="Password"
                           Variant="Variant.Outlined"
                           InputType="InputType.Password"
                           Required="true"
-                          Disabled="_isBusy"
                           Class="mt-4" />
 
-            <MudCheckBox T="bool" @bind-Checked="_model.RememberMe"
+            <MudCheckBox T="bool" 
+                         @bind-Value="_rememberMe"
                          Label="Remember me"
-                         Disabled="_isBusy"
+                         name="RememberMe"
                          Class="mt-3" />
 
             <MudStack Class="mt-4" Spacing="1">
-                <MudButton Type="ButtonType.Submit"
+                <MudButton ButtonType="ButtonType.Submit"
                            Variant="Variant.Filled"
                            Color="Color.Primary"
-                           Disabled="_isBusy"
                            FullWidth="true">
-                    @if (_isBusy)
-                    {
-                        <MudProgressCircular Indeterminate Size="Size.Small" Class="mr-2" />
-                        <span>Signing in...</span>
-                    }
-                    else
-                    {
-                        <span>Sign In</span>
-                    }
+                    Sign In
                 </MudButton>
                 <MudButton Variant="Variant.Text"
                            Color="Color.Secondary"
-                           Disabled="_isBusy"
                            Href="/auth/forgot-password"
                            FullWidth="true">
                     Forgot your password?
                 </MudButton>
             </MudStack>
-        </EditForm>
+        </form>
     </MudPaper>
 </MudContainer>
 
 @code {
-    private readonly LoginModel _model = new();
-    private bool _isBusy;
-    private bool ShowLockout { get; set; }
+    private string _emailOrUsername = string.Empty;
+    private string _password = string.Empty;
+    private bool _rememberMe;
+    private bool _alertVisible;
+    private string? _alertMessage;
+    private Severity _alertSeverity;
     private string? _returnUrl;
+    private string? _antiforgeryFieldName;
+    private string? _antiforgeryToken;
+    private bool _queryAlertProcessed;
     private MudTextField<string>? _usernameField;
 
-    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+    [CascadingParameter] 
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
         ParseReturnUrl();
 
+        // Redirect if already authenticated
         if (AuthenticationStateTask is not null)
         {
             var state = await AuthenticationStateTask;
@@ -92,13 +98,15 @@
             }
         }
 
-        await InvokeAsync(async () =>
+        await EnsureAntiforgeryTokenAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _usernameField is not null)
         {
-            if (_usernameField is not null)
-            {
-                await _usernameField.FocusAsync();
-            }
-        });
+            await _usernameField.FocusAsync();
+        }
     }
 
     protected override void OnParametersSet()
@@ -110,10 +118,50 @@
     {
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var query = QueryHelpers.ParseQuery(uri.Query);
+        
         if (query.TryGetValue("returnUrl", out var value))
         {
             _returnUrl = value.ToString();
         }
+
+        if (!_queryAlertProcessed && query.TryGetValue("error", out var errorCode))
+        {
+            _queryAlertProcessed = true;
+            ApplyQueryAlert(errorCode.ToString());
+        }
+
+        if (query.TryGetValue("identifier", out var identifierValue))
+        {
+            _emailOrUsername = identifierValue.ToString();
+        }
+    }
+
+    private Task EnsureAntiforgeryTokenAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_antiforgeryToken))
+            {
+                return Task.CompletedTask;
+            }
+
+            var httpContext = HttpContextAccessor.HttpContext;
+            if (httpContext is null)
+            {
+                Logger.LogWarning("Unable to acquire antiforgery tokens because HttpContext is unavailable.");
+                return Task.CompletedTask;
+            }
+
+            var tokens = Antiforgery.GetAndStoreTokens(httpContext);
+            _antiforgeryFieldName = tokens.FormFieldName;
+            _antiforgeryToken = tokens.RequestToken;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to acquire antiforgery tokens for login form.");
+        }
+
+        return Task.CompletedTask;
     }
 
     private string GetSafeReturnUrl()
@@ -123,6 +171,7 @@
             return "/";
         }
 
+        // Prevent open redirect attacks
         if (Uri.TryCreate(_returnUrl, UriKind.Absolute, out _))
         {
             return "/";
@@ -131,75 +180,40 @@
         return _returnUrl.StartsWith('/') ? _returnUrl : $"/{_returnUrl}";
     }
 
-    private async Task HandleLoginAsync()
+    private void ShowAlert(string message, Severity severity)
     {
-        _isBusy = true;
-        ShowLockout = false;
-
-        try
-        {
-            var identifier = _model.EmailOrUsername?.Trim();
-            if (string.IsNullOrWhiteSpace(identifier))
-            {
-                Snackbar.Add("Please enter your email or username.", Severity.Warning);
-                return;
-            }
-
-            var user = await UserManager.FindByNameAsync(identifier) ?? await UserManager.FindByEmailAsync(identifier);
-            if (user is null)
-            {
-                Snackbar.Add("Invalid credentials.", Severity.Error);
-                return;
-            }
-
-            if (!user.IsActive)
-            {
-                Snackbar.Add("This account has been disabled. Contact an administrator for help.", Severity.Error);
-                return;
-            }
-
-            var result = await SignInManager.PasswordSignInAsync(user.UserName!, _model.Password, _model.RememberMe, lockoutOnFailure: true);
-
-            if (result.Succeeded)
-            {
-                user.LastLoginAt = DateTime.UtcNow;
-                await UserManager.UpdateAsync(user);
-                Snackbar.Add("Welcome back!", Severity.Success);
-                Navigation.NavigateTo(GetSafeReturnUrl(), true);
-            }
-            else if (result.IsLockedOut)
-            {
-                ShowLockout = true;
-                Logger.LogWarning("User {UserId} locked out due to failed sign-in attempts.", user.Id);
-            }
-            else if (result.IsNotAllowed)
-            {
-                Snackbar.Add("This account is not allowed to sign in yet.", Severity.Error);
-            }
-            else
-            {
-                Snackbar.Add("Invalid credentials.", Severity.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Sign-in failed due to unexpected error.");
-            Snackbar.Add("An unexpected error occurred. Please try again.", Severity.Error);
-        }
-        finally
-        {
-            _isBusy = false;
-        }
+        _alertMessage = message;
+        _alertSeverity = severity;
+        _alertVisible = true;
     }
 
-    private sealed class LoginModel
+    private void ClearAlert()
     {
-        [Required(ErrorMessage = "Email or username is required")]
-        public string EmailOrUsername { get; set; } = string.Empty;
+        _alertVisible = false;
+        _alertMessage = null;
+    }
 
-        [Required(ErrorMessage = "Password is required")]
-        public string Password { get; set; } = string.Empty;
+    private void ApplyQueryAlert(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
 
-        public bool RememberMe { get; set; }
+        var normalized = code.Trim().ToLowerInvariant();
+        (string Message, Severity Severity)? alert = normalized switch
+        {
+            "missingcredentials" => ("Please enter your email or username and password.", Severity.Warning),
+            "invalidcredentials" => ("Invalid credentials.", Severity.Error),
+            "disabled" => ("This account has been disabled. Contact an administrator.", Severity.Error),
+            "lockedout" => ("Account temporarily locked. Try again later.", Severity.Error),
+            "notallowed" => ("This account is not allowed to sign in yet.", Severity.Error),
+            _ => null
+        };
+
+        if (alert is not null)
+        {
+            ShowAlert(alert.Value.Message, alert.Value.Severity);
+        }
     }
 }

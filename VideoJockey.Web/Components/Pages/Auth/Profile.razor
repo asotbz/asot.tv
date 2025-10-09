@@ -179,14 +179,14 @@ else
         var userName = state.User.Identity?.Name;
         if (string.IsNullOrEmpty(userName))
         {
-            Navigation.NavigateTo("/auth/login", true);
+            Navigation.NavigateTo("/auth/signin", true);
             return;
         }
 
         _user = await UserManager.FindByNameAsync(userName);
         if (_user is null)
         {
-            Navigation.NavigateTo("/auth/login", true);
+            Navigation.NavigateTo("/auth/signin", true);
             return;
         }
 

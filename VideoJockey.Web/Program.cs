@@ -3,7 +3,9 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -55,6 +57,8 @@ try
     // Add services to the container
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
+
+    builder.Services.AddHttpContextAccessor();
 
     builder.Services.AddResponseCompression(options =>
     {
@@ -163,7 +167,7 @@ try
     })
     .AddCookie(IdentityConstants.ApplicationScheme, options =>
     {
-        options.LoginPath = "/auth/login";
+        options.LoginPath = "/auth/signin";
         options.LogoutPath = "/auth/logout";
         options.AccessDeniedPath = "/auth/access-denied";
         options.SlidingExpiration = true;
@@ -235,6 +239,9 @@ try
     
     // Add web-specific services
     builder.Services.AddScoped<VideoJockey.Web.Services.KeyboardShortcutService>();
+    builder.Services.AddScoped<VideoJockey.Web.Services.LoadingStateService>();
+    builder.Services.AddScoped<VideoJockey.Web.Services.ThemeService>();
+    builder.Services.AddScoped<VideoJockey.Web.Services.OnboardingService>();
 
     // Configure CORS (if needed for API access)
     builder.Services.AddCors(options =>
@@ -302,10 +309,97 @@ try
         Predicate = _ => false
     });
 
+    app.MapPost("/auth/login", async (
+        HttpContext httpContext,
+        SignInManager<ApplicationUser> signInManager,
+        UserManager<ApplicationUser> userManager,
+        ILogger<Program> logger) =>
+    {
+        var form = await httpContext.Request.ReadFormAsync();
+
+        var identifier = form["EmailOrUsername"].ToString().Trim();
+        var password = form["Password"].ToString();
+        var rememberMe = ParseCheckboxValue(form["RememberMe"].ToString());
+        var returnUrlRaw = form["ReturnUrl"].ToString();
+
+        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(password))
+        {
+            logger.LogInformation("Fallback login attempt rejected due to missing credentials.");
+            return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "missingcredentials", identifier));
+        }
+
+        logger.LogInformation("Fallback login attempt submitted for {Identifier}", identifier);
+
+        var user = await userManager.FindByNameAsync(identifier) ?? await userManager.FindByEmailAsync(identifier);
+        if (user is null)
+        {
+            logger.LogWarning("Fallback login attempt with unknown identifier {Identifier}", identifier);
+            return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "invalidcredentials", identifier));
+        }
+
+        if (!user.IsActive)
+        {
+            logger.LogWarning("Inactive user {UserId} attempted to sign in via fallback login.", user.Id);
+            return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "disabled", identifier));
+        }
+
+        var result = await signInManager.PasswordSignInAsync(user.UserName!, password, rememberMe, lockoutOnFailure: true);
+
+        if (result.Succeeded)
+        {
+            user.LastLoginAt = DateTime.UtcNow;
+            await userManager.UpdateAsync(user);
+            logger.LogInformation("User {UserId} signed in via fallback login POST.", user.Id);
+            return Results.LocalRedirect(NormalizeReturnUrl(returnUrlRaw));
+        }
+
+        if (result.IsLockedOut)
+        {
+            logger.LogWarning("User {UserId} locked out via fallback login POST.", user.Id);
+            return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "lockedout", identifier));
+        }
+
+        if (result.IsNotAllowed)
+        {
+            logger.LogWarning("User {UserId} not allowed to sign in via fallback login POST.", user.Id);
+            return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "notallowed", identifier));
+        }
+
+        logger.LogWarning("Invalid credentials provided for user {UserId} via fallback login POST.", user.Id);
+        return Results.Redirect(BuildLoginRedirect(returnUrlRaw, "invalidcredentials", identifier));
+    }).AllowAnonymous();
+
+    app.MapGet("/auth/logout", async (
+        HttpContext httpContext,
+        SignInManager<ApplicationUser> signInManager,
+        ILogger<Program> logger) =>
+    {
+        try
+        {
+            var userName = httpContext.User.Identity?.Name;
+            await signInManager.SignOutAsync();
+            logger.LogInformation("User {UserName} signed out successfully", userName ?? "Unknown");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error during sign-out");
+        }
+        
+        return Results.Redirect("/auth/signin");
+    }).AllowAnonymous();
+
+    app.MapGet("/antiforgery/token", (IAntiforgery antiforgery, HttpContext context) =>
+    {
+        var tokens = antiforgery.GetAndStoreTokens(context);
+        context.Response.Headers.CacheControl = "no-cache, no-store";
+        context.Response.Headers.Pragma = "no-cache";
+        return Results.Json(new { fieldName = tokens.FormFieldName, requestToken = tokens.RequestToken });
+    }).AllowAnonymous();
+
     app.MapRazorComponents<VideoJockey.Web.Components.App>()
         .AddInteractiveServerRenderMode();
 
-    app.MapHub<VideoUpdatesHub>("/hubs/updates");
+app.MapHub<VideoUpdatesHub>("/hubs/updates");
 
     app.MapGet("/api/system/build-info", () =>
     {
@@ -346,7 +440,7 @@ try
         if (string.IsNullOrWhiteSpace(token))
         {
             logger.LogWarning("Setup sign-in attempted without a token.");
-            return Results.Redirect("/auth/login");
+            return Results.Redirect("/auth/signin");
         }
 
         var storedTokenConfig = await unitOfWork.Configurations
@@ -355,14 +449,14 @@ try
         if (storedTokenConfig?.Value is null)
         {
             logger.LogWarning("Setup sign-in token not found or already used.");
-            return Results.Redirect("/auth/login");
+            return Results.Redirect("/auth/signin");
         }
 
         var tokenParts = storedTokenConfig.Value.Split('|', 2, StringSplitOptions.TrimEntries);
         if (tokenParts.Length != 2 || !string.Equals(tokenParts[0], token, StringComparison.Ordinal))
         {
             logger.LogWarning("Setup sign-in token mismatch.");
-            return Results.Redirect("/auth/login");
+            return Results.Redirect("/auth/signin");
         }
 
         var userId = tokenParts[1];
@@ -370,7 +464,7 @@ try
         if (user is null)
         {
             logger.LogWarning("Setup sign-in user not found for token.");
-            return Results.Redirect("/auth/login");
+            return Results.Redirect("/auth/signin");
         }
 
         user.LockoutEnabled = false;
@@ -410,13 +504,62 @@ try
             {
                 logger.LogInformation("First run detected - setup wizard will be shown");
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "An error occurred while migrating the database");
-            throw;
-        }
+}
+catch (Exception ex)
+{
+    logger.LogError(ex, "An error occurred while migrating the database");
+    throw;
+}
+}
+static string NormalizeReturnUrl(string? returnUrl)
+{
+    if (string.IsNullOrWhiteSpace(returnUrl))
+    {
+        return "/";
     }
+
+    if (Uri.TryCreate(returnUrl, UriKind.Absolute, out _))
+    {
+        return "/";
+    }
+
+    return returnUrl.StartsWith('/') ? returnUrl : $"/{returnUrl}";
+}
+
+static string BuildLoginRedirect(string? returnUrl, string errorCode, string? identifier = null)
+{
+    var query = QueryString.Empty;
+
+    if (!string.IsNullOrWhiteSpace(errorCode))
+    {
+        query = query.Add("error", errorCode);
+    }
+
+    if (!string.IsNullOrWhiteSpace(identifier))
+    {
+        query = query.Add("identifier", identifier);
+    }
+
+    var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+    if (!string.Equals(safeReturnUrl, "/", StringComparison.Ordinal))
+    {
+        query = query.Add("returnUrl", safeReturnUrl);
+    }
+
+    return $"/auth/signin{query}";
+}
+
+static bool ParseCheckboxValue(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return false;
+    }
+
+    return value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+           value.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+           value.Equals("1", StringComparison.OrdinalIgnoreCase);
+}
 
     Log.Information("VideoJockey application started successfully");
     app.Run();

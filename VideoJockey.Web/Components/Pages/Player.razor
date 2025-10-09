@@ -78,15 +78,15 @@
     
     private void RegisterKeyboardShortcuts()
     {
-        KeyboardService.RegisterShortcut("Space", "Player", TogglePlayPause);
-        KeyboardService.RegisterShortcut("ArrowLeft", "Player", () => SeekRelative(-10));
-        KeyboardService.RegisterShortcut("ArrowRight", "Player", () => SeekRelative(10));
-        KeyboardService.RegisterShortcut("ArrowUp", "Player", () => AdjustVolume(0.1));
-        KeyboardService.RegisterShortcut("ArrowDown", "Player", () => AdjustVolume(-0.1));
-        KeyboardService.RegisterShortcut("M", "Player", ToggleMute);
-        KeyboardService.RegisterShortcut("F", "Player", ToggleFullscreen);
-        KeyboardService.RegisterShortcut("N", "Player", PlayNext);
-        KeyboardService.RegisterShortcut("P", "Player", PlayPrevious);
+        KeyboardService.RegisterShortcut("Space", "Player", TogglePlayPause, "Toggle play or pause");
+        KeyboardService.RegisterShortcut("ArrowLeft", "Player", () => SeekRelative(-10), "Seek backward 10s");
+        KeyboardService.RegisterShortcut("ArrowRight", "Player", () => SeekRelative(10), "Seek forward 10s");
+        KeyboardService.RegisterShortcut("ArrowUp", "Player", () => AdjustVolume(0.1), "Increase volume");
+        KeyboardService.RegisterShortcut("ArrowDown", "Player", () => AdjustVolume(-0.1), "Decrease volume");
+        KeyboardService.RegisterShortcut("M", "Player", ToggleMute, "Toggle mute");
+        KeyboardService.RegisterShortcut("F", "Player", ToggleFullscreen, "Toggle fullscreen");
+        KeyboardService.RegisterShortcut("N", "Player", PlayNext, "Play next video");
+        KeyboardService.RegisterShortcut("P", "Player", PlayPrevious, "Play previous video");
     }
     
     private async Task LoadCollection(Guid collectionId)

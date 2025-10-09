@@ -65,12 +65,14 @@
                                                OnClick="() => SwitchView(ViewMode.List)"
                                                Title="List view" />
                             </MudButtonGroup>
+                        <MudTooltip Text="Add a new video (Ctrl+A)">
                             <MudButton Variant="Variant.Filled"
                                        Color="Color.Success"
                                        StartIcon="@Icons.Material.Filled.Add"
                                        OnClick="OpenAddVideoDialog">
                                 Add Video
                             </MudButton>
+                        </MudTooltip>
                         </MudStack>
                     </MudItem>
                 </MudGrid>
@@ -137,69 +139,73 @@
                             </MudStack>
                         }
 
-                        @if (_isLoading)
-                        {
-                            <MudSkeleton Height="280px" Width="100%" Animation="Animation.Wave" />
-                        }
-                        else if (_videos.Count == 0)
-                        {
-                            <MudPaper Class="pa-6 text-center" Elevation="0">
-                                <MudIcon Icon="@Icons.Material.Filled.VideoLibrary" Size="Size.Large" Color="Color.Default" />
-                                <MudText Typo="Typo.h5" Class="mt-2">No videos found</MudText>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                    Adjust your search or filters to find what you're looking for.
-                                </MudText>
-                            </MudPaper>
-                        }
-                        else
-                        {
-                            @if (_viewMode == ViewMode.Grid)
+                        <LoadingContent Profile="LoadingProfile.VideoGrid"
+                                        IsLoading="@_isLoading"
+                                        LoadingMessage="Loading library...">
+                            @if (_videos.Count == 0)
                             {
-                                <VideoLibraryGrid Videos="@_videos"
-                                                  SelectedVideoIds="@_selectedVideoIds"
-                                                  ThumbnailUrlSelector="GetThumbnailUrl"
-                                                  DurationFormatter="FormatDuration"
-                                                  OnVideoClicked="OpenVideoDetails"
-                                                  OnSelectionToggled="ToggleSelection"
-                                                  OnPlay="PlayVideo"
-                                                  OnPlayNext="PlayNext"
-                                                  OnAddToQueue="AddToQueue"
-                                                  OnEdit="OpenEditorDialog"
-                                                  OnDelete="DeleteVideo"
-                                                  OnContextMenuRequested="HandleContextMenu" />
+                                <MudPaper Class="pa-6 text-center vj-animate-fade-in" Elevation="0">
+                                    <MudIcon Icon="@Icons.Material.Filled.VideoLibrary" Size="Size.Large" Color="Color.Default" />
+                                    <MudText Typo="Typo.h5" Class="mt-2">No videos found</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Adjust your search or filters to find what you're looking for.
+                                    </MudText>
+                                </MudPaper>
                             }
                             else
                             {
-                                <VideoLibraryList Videos="@_videos"
-                                                  SelectedVideoIds="@_selectedVideoIds"
-                                                  ThumbnailUrlSelector="GetThumbnailUrl"
-                                                  DurationFormatter="FormatDuration"
-                                                  OnVideoClicked="OpenVideoDetails"
-                                                  OnSelectionToggled="ToggleSelection"
-                                                  OnPlay="PlayVideo"
-                                                  OnPlayNext="PlayNext"
-                                                  OnAddToQueue="AddToQueue"
-                                                  OnEdit="OpenEditorDialog"
-                                                  OnDelete="DeleteVideo"
-                                                  OnContextMenuRequested="HandleContextMenu" />
-                            }
+                                @if (_viewMode == ViewMode.Grid)
+                                {
+                                    <div class="vj-animate-fade-in">
+                                        <VideoLibraryGrid Videos="@_videos"
+                                                          SelectedVideoIds="@_selectedVideoIds"
+                                                          ThumbnailUrlSelector="GetThumbnailUrl"
+                                                          DurationFormatter="FormatDuration"
+                                                          OnVideoClicked="OpenVideoDetails"
+                                                          OnSelectionToggled="ToggleSelection"
+                                                          OnPlay="PlayVideo"
+                                                          OnPlayNext="PlayNext"
+                                                          OnAddToQueue="AddToQueue"
+                                                          OnEdit="OpenEditorDialog"
+                                                          OnDelete="DeleteVideo"
+                                                          OnContextMenuRequested="HandleContextMenu" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="vj-animate-fade-in">
+                                        <VideoLibraryList Videos="@_videos"
+                                                          SelectedVideoIds="@_selectedVideoIds"
+                                                          ThumbnailUrlSelector="GetThumbnailUrl"
+                                                          DurationFormatter="FormatDuration"
+                                                          OnVideoClicked="OpenVideoDetails"
+                                                          OnSelectionToggled="ToggleSelection"
+                                                          OnPlay="PlayVideo"
+                                                          OnPlayNext="PlayNext"
+                                                          OnAddToQueue="AddToQueue"
+                                                          OnEdit="OpenEditorDialog"
+                                                          OnDelete="DeleteVideo"
+                                                          OnContextMenuRequested="HandleContextMenu" />
+                                    </div>
+                                }
 
-                            @if (_hasMoreVideos)
-                            {
-                                <div class="d-flex justify-center mt-4">
-                                    <MudButton Variant="Variant.Outlined"
-                                               Color="Color.Primary"
-                                               Disabled="@_isLoadingMore"
-                                               OnClick="LoadMoreVideosAsync">
-                                        @if (_isLoadingMore)
-                                        {
-                                            <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
-                                        }
-                                        Load More
-                                    </MudButton>
-                                </div>
+                                @if (_hasMoreVideos)
+                                {
+                                    <div class="d-flex justify-center mt-4">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   Disabled="@_isLoadingMore"
+                                                   OnClick="LoadMoreVideosAsync">
+                                            @if (_isLoadingMore)
+                                            {
+                                                <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                                            }
+                                            Load More
+                                        </MudButton>
+                                    </div>
+                                }
                             }
-                        }
+                        </LoadingContent>
                     </MudPaper>
                 </MudItem>
             </MudGrid>
@@ -916,8 +922,8 @@
 
     private void RegisterKeyboardShortcuts()
     {
-        KeyboardService.RegisterShortcut("Ctrl+A", "Library", () => SelectAll());
-        KeyboardService.RegisterShortcut("Escape", "Library", ClearSelection);
+        KeyboardService.RegisterShortcut("Ctrl+A", "Library", () => SelectAll(), "Select all videos");
+        KeyboardService.RegisterShortcut("Escape", "Library", ClearSelection, "Clear selection");
     }
 
     public async ValueTask DisposeAsync()

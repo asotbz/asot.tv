@@ -3,12 +3,21 @@
 
 <MudPaper Class="pa-4 vj-filter-sidebar" Elevation="1">
     <div class="d-flex justify-space-between align-center mb-2">
-        <MudText Typo="Typo.h6">Filters</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudText Typo="Typo.h6">Filters</MudText>
+            <MudTooltip Text="Select multiple facets to intersect results. Hold Shift to select ranges.">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Secondary" Size="Size.Small" />
+            </MudTooltip>
+        </MudStack>
         <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearFilters" Disabled="!HasActiveFilters">
             Clear
         </MudButton>
     </div>
     <MudDivider Class="mb-2" />
+
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+        Tip: Hold <strong>Shift</strong> while clicking to select a range of years or <strong>Ctrl</strong> to toggle individual facets without closing the panel.
+    </MudText>
 
     <MudExpansionPanels Elevation="0">
         <MudExpansionPanel Text="Genres" Expanded="true">

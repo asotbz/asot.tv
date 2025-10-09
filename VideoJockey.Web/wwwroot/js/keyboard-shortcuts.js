@@ -32,7 +32,14 @@ window.setupKeyboardShortcuts = (dotNetRef) => {
                 e.preventDefault();
             }
         }
-        
+
+        if (e.altKey) {
+            const altKeys = ['h', 'v', 'd', 'i', 'c', 'l', 's', 't', 'o', 'q'];
+            if (altKeys.includes(e.key.toLowerCase())) {
+                e.preventDefault();
+            }
+        }
+
         // Send to .NET
         dotNetRef.invokeMethodAsync('HandleKeyPress', e.key, e.ctrlKey, e.shiftKey, e.altKey);
     };

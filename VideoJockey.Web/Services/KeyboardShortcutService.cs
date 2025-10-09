@@ -24,7 +24,7 @@ public class KeyboardShortcutService : IDisposable
     public event Action? OnEscape;
     
     private bool _isInitialized = false;
-    private readonly Dictionary<string, (string category, Action action)> _shortcuts = new();
+    private readonly Dictionary<string, ShortcutRegistration> _shortcuts = new();
     
     public KeyboardShortcutService(IJSRuntime jsRuntime, NavigationManager navigation)
     {
@@ -41,9 +41,9 @@ public class KeyboardShortcutService : IDisposable
         _isInitialized = true;
     }
     
-    public void RegisterShortcut(string shortcut, string category, Action action)
+    public void RegisterShortcut(string shortcut, string category, Action action, string? description = null)
     {
-        _shortcuts[shortcut] = (category, action);
+        _shortcuts[shortcut] = new ShortcutRegistration(category, description ?? BuildFriendlyDescription(shortcut), action);
     }
     
     public void UnregisterShortcut(string shortcut)
@@ -60,7 +60,7 @@ public class KeyboardShortcutService : IDisposable
         // Check registered shortcuts first
         if (_shortcuts.TryGetValue(shortcut, out var registeredShortcut))
         {
-            registeredShortcut.action?.Invoke();
+            registeredShortcut.Action?.Invoke();
             return;
         }
         
@@ -169,13 +169,18 @@ public class KeyboardShortcutService : IDisposable
         {
             shortcuts.Add(new ShortcutInfo
             {
-                Category = kvp.Value.category,
+                Category = kvp.Value.Category,
                 Key = kvp.Key,
-                Description = kvp.Value.category
+                Description = kvp.Value.Description
             });
         }
-        
+
         return shortcuts;
+    }
+
+    private static string BuildFriendlyDescription(string shortcut)
+    {
+        return shortcut.Replace("+", " + ");
     }
     
     public void Dispose()
@@ -193,4 +198,6 @@ public class KeyboardShortcutService : IDisposable
         public string Key { get; set; } = "";
         public string Description { get; set; } = "";
     }
+
+    private sealed record ShortcutRegistration(string Category, string Description, Action Action);
 }
