@@ -20,7 +20,7 @@ else
                 <div class="vj-video-grid__row">
                     @foreach (var video in row)
                     {
-                        <div class="vj-video-grid__cell" @oncontextmenu="@(e => HandleContextMenu(e, video))" @oncontextmenu:preventDefault="true">
+                        <div @key="video.Id" class="vj-video-grid__cell" @oncontextmenu="@(e => HandleContextMenu(e, video))" @oncontextmenu:preventDefault="true">
                             <MudCard Class="@(BuildCardClass(video))" @onclick="() => OnVideoClicked.InvokeAsync(video)">
                                 <MudCardHeader Class="pa-2">
                                     <div class="d-flex justify-space-between align-center">

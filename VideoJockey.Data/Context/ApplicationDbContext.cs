@@ -54,6 +54,13 @@ namespace VideoJockey.Data.Context
                 entity.HasIndex(e => e.ImvdbId);
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => e.FileHash);
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => e.UpdatedAt);
+                entity.HasIndex(e => e.LastPlayedAt);
+                entity.HasIndex(e => e.PlayCount);
+                entity.HasIndex(e => e.Rating);
+                entity.HasIndex(e => e.Duration);
+                entity.HasIndex(e => e.Year);
 
                 // Configure many-to-many relationships
                 entity.HasMany(e => e.Genres)

@@ -30,26 +30,41 @@ namespace VideoJockey.Data.Repositories
 
         public async Task<IEnumerable<T>> GetAllAsync()
         {
-            return await _dbSet.Where(e => e.IsActive).ToListAsync();
+            return await _dbSet
+                .Where(e => e.IsActive)
+                .AsNoTracking()
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<T>> GetAllAsync(bool includeDeleted)
         {
             if (includeDeleted)
             {
-                return await _dbSet.ToListAsync();
+                return await _dbSet
+                    .AsNoTracking()
+                    .ToListAsync();
             }
-            return await _dbSet.Where(e => e.IsActive).ToListAsync();
+            return await _dbSet
+                .Where(e => e.IsActive)
+                .AsNoTracking()
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<T>> GetAsync(Expression<Func<T, bool>> predicate)
         {
-            return await _dbSet.Where(predicate).Where(e => e.IsActive).ToListAsync();
+            return await _dbSet
+                .Where(predicate)
+                .Where(e => e.IsActive)
+                .AsNoTracking()
+                .ToListAsync();
         }
 
         public IQueryable<T> GetQueryable()
         {
-            return _dbSet.Where(e => e.IsActive).AsQueryable();
+            return _dbSet
+                .Where(e => e.IsActive)
+                .AsNoTracking()
+                .AsQueryable();
         }
 
         public async Task<IReadOnlyList<T>> ListAsync(ISpecification<T> specification)
@@ -100,13 +115,16 @@ namespace VideoJockey.Data.Repositories
 
         public Task UpdateAsync(T entity)
         {
-            _dbSet.Update(entity);
+            AttachOrUpdateEntity(entity);
             return Task.CompletedTask;
         }
 
         public Task UpdateRangeAsync(IEnumerable<T> entities)
         {
-            _dbSet.UpdateRange(entities);
+            foreach (var entity in entities)
+            {
+                AttachOrUpdateEntity(entity);
+            }
             return Task.CompletedTask;
         }
 
@@ -114,7 +132,7 @@ namespace VideoJockey.Data.Repositories
         {
             // Soft delete
             entity.IsActive = false;
-            _dbSet.Update(entity);
+            AttachOrUpdateEntity(entity);
             return Task.CompletedTask;
         }
 
@@ -125,7 +143,10 @@ namespace VideoJockey.Data.Repositories
             {
                 entity.IsActive = false;
             }
-            _dbSet.UpdateRange(entities);
+            foreach (var entity in entities)
+            {
+                AttachOrUpdateEntity(entity);
+            }
             return Task.CompletedTask;
         }
 
@@ -154,12 +175,32 @@ namespace VideoJockey.Data.Repositories
 
         public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
         {
-            return await _dbSet.Where(predicate).Where(e => e.IsActive).FirstOrDefaultAsync();
+            return await _dbSet
+                .Where(predicate)
+                .Where(e => e.IsActive)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
         }
 
         public async Task<int> SaveChangesAsync()
         {
             return await _context.SaveChangesAsync();
+        }
+
+        private void AttachOrUpdateEntity(T entity)
+        {
+            var trackedEntry = _context.ChangeTracker.Entries<T>()
+                .FirstOrDefault(entry => entry.Entity.Id == entity.Id);
+
+            if (trackedEntry is not null)
+            {
+                trackedEntry.CurrentValues.SetValues(entity);
+                trackedEntry.State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+            }
+            else
+            {
+                _dbSet.Update(entity);
+            }
         }
     }
 }

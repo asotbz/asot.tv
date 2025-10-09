@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FuzzySharp;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Entities;
 using VideoJockey.Core.Interfaces;
@@ -161,7 +162,7 @@ namespace VideoJockey.Services
                 .OrderByDescending(s => s.StartedAt)
                 .Take(Math.Max(1, count));
 
-            return queryable.ToList();
+            return await queryable.ToListAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<IReadOnlyList<LibraryImportItem>> GetItemsAsync(Guid sessionId, CancellationToken cancellationToken = default)

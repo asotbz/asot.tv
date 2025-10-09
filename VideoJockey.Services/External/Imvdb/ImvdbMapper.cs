@@ -86,9 +86,10 @@ public static class ImvdbMapper
             }
         }
 
-        var genres = video.Genres
+        var genres = (video.Genres ?? Enumerable.Empty<ImvdbGenre>())
             .Select(g => g.Name)
             .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 

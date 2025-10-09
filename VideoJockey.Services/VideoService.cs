@@ -15,15 +15,18 @@ public class VideoService : IVideoService
     private readonly IRepository<Video> _videoRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEnumerable<IVideoUpdateNotifier> _updateNotifiers;
+    private readonly ISearchService _searchService;
 
     public VideoService(
         IRepository<Video> videoRepository,
         IUnitOfWork unitOfWork,
-        IEnumerable<IVideoUpdateNotifier> updateNotifiers)
+        IEnumerable<IVideoUpdateNotifier> updateNotifiers,
+        ISearchService searchService)
     {
         _videoRepository = videoRepository;
         _unitOfWork = unitOfWork;
         _updateNotifiers = updateNotifiers ?? Enumerable.Empty<IVideoUpdateNotifier>();
+        _searchService = searchService;
     }
 
     public async Task<List<Video>> GetAllVideosAsync(CancellationToken cancellationToken = default)
@@ -70,6 +73,7 @@ public class VideoService : IVideoService
     {
         await _videoRepository.AddAsync(video);
         await _unitOfWork.SaveChangesAsync();
+        _searchService.InvalidateFacetsCache();
         var notification = await BuildNotificationAsync(video.Id);
         if (notification != null)
         {
@@ -82,6 +86,7 @@ public class VideoService : IVideoService
     {
         await _videoRepository.UpdateAsync(video);
         await _unitOfWork.SaveChangesAsync();
+        _searchService.InvalidateFacetsCache();
         var notification = await BuildNotificationAsync(video.Id);
         if (notification != null)
         {
@@ -97,6 +102,7 @@ public class VideoService : IVideoService
         {
             await _videoRepository.DeleteAsync(video);
             await _unitOfWork.SaveChangesAsync();
+            _searchService.InvalidateFacetsCache();
             await NotifyAsync(notifier => notifier.VideoDeletedAsync(id));
         }
     }

@@ -80,7 +80,7 @@ public class ThumbnailBackgroundService : BackgroundService
                 }
                 
                 var thumbnailPath = thumbnailService.GetThumbnailPath(video);
-                var success = await thumbnailService.GenerateThumbnailAsync(video.FilePath, thumbnailPath);
+                var success = await thumbnailService.GenerateThumbnailAsync(video.FilePath, thumbnailPath, cancellationToken: cancellationToken);
                 
                 if (success)
                 {

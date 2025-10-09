@@ -1,3 +1,4 @@
+@using System.Threading
 @using VideoJockey.Services.Interfaces
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Forms
@@ -124,6 +125,9 @@
 @code {
     [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
     
+    private const long MaxImportUploadBytes = 250L * 1024L * 1024L; // 250 MB
+    private const int UploadChunkSize = 1 * 1024 * 1024; // 1 MB
+
     private string collectionName = "";
     private IBrowserFile? selectedFile = null;
     private string importMode = "match-path";
@@ -181,12 +185,25 @@
             importProgress = 10;
             StateHasChanged();
             
-            await using var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB limit
+            await using var fileStream = selectedFile.OpenReadStream(maxAllowedSize: MaxImportUploadBytes);
             await using var destinationStream = File.Create(tempFilePath);
-            await fileStream.CopyToAsync(destinationStream);
-            
+
+            importStatus = "Uploading file...";
+            await CopyStreamInChunksAsync(
+                fileStream,
+                destinationStream,
+                selectedFile.Size,
+                UploadChunkSize,
+                progress => InvokeAsync(() =>
+                {
+                    importProgress = 10 + (int)Math.Min(40, progress * 40);
+                    importStatus = $"Uploading file ({progress * 100:F1}%)";
+                    StateHasChanged();
+                }),
+                cancellationToken: CancellationToken.None);
+
             importStatus = "Processing file...";
-            importProgress = 30;
+            importProgress = Math.Max(importProgress, 50);
             StateHasChanged();
             
             // Import the collection
@@ -226,7 +243,7 @@
             isImporting = false;
         }
     }
-    
+
     private string FormatFileSize(long bytes)
     {
         string[] suffixes = { "B", "KB", "MB", "GB" };
@@ -238,8 +255,45 @@
             counter++;
             size /= 1024;
         }
-        
+
         return $"{size:n2} {suffixes[counter]}";
+    }
+
+    private static async Task CopyStreamInChunksAsync(
+        Stream source,
+        Stream destination,
+        long totalBytes,
+        int chunkSize,
+        Func<double, Task>? reportProgress,
+        CancellationToken cancellationToken = default)
+    {
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(chunkSize);
+        try
+        {
+            long bytesCopied = 0;
+            int bytesRead;
+
+            while ((bytesRead = await source.ReadAsync(buffer.AsMemory(0, chunkSize), cancellationToken)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                bytesCopied += bytesRead;
+
+                if (totalBytes > 0 && reportProgress != null)
+                {
+                    await reportProgress(Math.Min(1d, bytesCopied / (double)totalBytes)).ConfigureAwait(false);
+                }
+            }
+
+            await destination.FlushAsync(cancellationToken);
+            if (reportProgress != null)
+            {
+                await reportProgress(1.0).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }
 

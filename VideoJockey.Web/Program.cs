@@ -1,6 +1,13 @@
 using System;
+using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VideoJockey.Web.Hubs;
 using MudBlazor.Services;
@@ -16,6 +23,7 @@ using VideoJockey.Data.Repositories;
 using VideoJockey.Services;
 using VideoJockey.Services.Interfaces;
 using VideoJockey.Services.Models;
+using HeaderNames = Microsoft.Net.Http.Headers.HeaderNames;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -48,6 +56,44 @@ try
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
 
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+        {
+            "application/json",
+            "application/xml",
+            "application/javascript",
+            "image/svg+xml"
+        });
+    });
+
+    builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
+    builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.SmallestSize);
+
+    builder.Services.AddOutputCache(options =>
+    {
+        options.AddBasePolicy(policy => policy.NoCache());
+
+        options.AddPolicy("StaticAssets", policy =>
+        {
+            policy.Cache();
+            policy.Expire(TimeSpan.FromHours(1));
+            policy.SetCacheKeyPrefix("vj-assets");
+            policy.SetVaryByHeader(HeaderNames.AcceptEncoding);
+        });
+
+        options.AddPolicy("SystemMetrics", policy =>
+        {
+            policy.Cache();
+            policy.Expire(TimeSpan.FromSeconds(5));
+            policy.SetCacheKeyPrefix("vj-metrics");
+            policy.SetVaryByHeader(HeaderNames.AcceptEncoding);
+        });
+    });
+
     // Add MudBlazor services
     builder.Services.AddMudServices();
 
@@ -57,9 +103,18 @@ try
     // Configure SQLite with Entity Framework Core
     var dataDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
     Directory.CreateDirectory(dataDirectory);
-    var connectionString = $"Data Source={Path.Combine(dataDirectory, "videojockey.db")}";
+    var databasePath = Path.Combine(dataDirectory, "videojockey.db");
+    var connectionStringBuilder = new SqliteConnectionStringBuilder
+    {
+        DataSource = databasePath,
+        Pooling = true,
+        Cache = SqliteCacheMode.Shared,
+        Mode = SqliteOpenMode.ReadWriteCreate
+    };
 
-    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    var connectionString = connectionStringBuilder.ToString();
+
+    builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
     {
         options.UseSqlite(connectionString);
         options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
@@ -142,6 +197,8 @@ try
     builder.Services.AddScoped<IVideoService, VideoService>();
     builder.Services.AddScoped<ISearchService, SearchService>();
     builder.Services.AddScoped<IExternalSearchService, ExternalSearchService>();
+    builder.Services.AddSingleton<IImageOptimizationService, ImageOptimizationService>();
+    builder.Services.AddSingleton<IMetricsService, MetricsService>();
     builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
     builder.Services.AddScoped<IPlaylistService, PlaylistService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
@@ -213,7 +270,18 @@ try
     });
 
     app.UseHttpsRedirection();
-    app.UseStaticFiles();
+    app.UseResponseCompression();
+    app.UseOutputCache();
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context =>
+        {
+            var headers = context.Context.Response.Headers;
+            headers[HeaderNames.CacheControl] = "public,max-age=3600";
+            headers[HeaderNames.Vary] = HeaderNames.AcceptEncoding;
+        }
+    });
     app.UseMiddleware<AntiforgeryCookieCleanupMiddleware>();
     app.UseAntiforgery();
 
@@ -238,6 +306,35 @@ try
         .AddInteractiveServerRenderMode();
 
     app.MapHub<VideoUpdatesHub>("/hubs/updates");
+
+    app.MapGet("/api/system/build-info", () =>
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var informationalVersion = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+
+        var version = informationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown";
+
+        var payload = new
+        {
+            Name = assembly.GetName().Name ?? "VideoJockey.Web",
+            Version = version,
+            Build = Environment.GetEnvironmentVariable("BUILD_NUMBER") ?? "local",
+            Environment = app.Environment.EnvironmentName
+        };
+
+        return Results.Ok(payload);
+    })
+    .CacheOutput("StaticAssets")
+    .WithName("GetBuildInfo")
+    .AllowAnonymous();
+
+    app.MapGet("/api/system/metrics", async (IMetricsService metricsService, CancellationToken cancellationToken) =>
+        Results.Ok(await metricsService.CaptureAsync(cancellationToken)))
+        .CacheOutput("SystemMetrics")
+        .WithName("GetSystemMetrics")
+        .AllowAnonymous();
 
     app.MapGet("/auth/setup-complete", async (
         HttpContext httpContext,

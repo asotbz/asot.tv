@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using VideoJockey.Core.Entities;
 using VideoJockey.Data.Context;
@@ -22,7 +23,8 @@ public class SearchServiceTests
 
         var context = new ApplicationDbContext(options);
         var unitOfWork = new UnitOfWork(context);
-        var service = new SearchService(context, unitOfWork, NullLogger<SearchService>.Instance);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new SearchService(context, unitOfWork, NullLogger<SearchService>.Instance, cache);
         return (context, unitOfWork, service);
     }
 

@@ -590,30 +590,44 @@ public class MetadataService : IMetadataService
             if (!string.IsNullOrWhiteSpace(video.FilePath) && File.Exists(video.FilePath))
             {
                 var metadata = await ExtractMetadataAsync(video.FilePath, cancellationToken);
-                
-                // Update video with file metadata
-                video.Title ??= metadata.Title;
-                video.Artist ??= metadata.Artist;
-                video.Album ??= metadata.Album;
-                video.Year ??= metadata.ReleaseDate?.Year;
-                
-                // Convert TimeSpan to seconds
-                if (metadata.Duration != null && video.Duration == null)
+
+                if (metadata is not null)
                 {
-                    video.Duration = (int)metadata.Duration.Value.TotalSeconds;
+                    // Update video with file metadata
+                    if (string.IsNullOrWhiteSpace(video.Title) && !string.IsNullOrWhiteSpace(metadata.Title))
+                    {
+                        video.Title = metadata.Title!;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(video.Artist) && !string.IsNullOrWhiteSpace(metadata.Artist))
+                    {
+                        video.Artist = metadata.Artist!;
+                    }
+
+                    video.Album ??= metadata.Album;
+                    video.Year ??= metadata.ReleaseDate?.Year;
+
+                    // Convert TimeSpan to seconds
+                    if (metadata.Duration != null && video.Duration == null)
+                    {
+                        video.Duration = (int)metadata.Duration.Value.TotalSeconds;
+                    }
+
+                    // Set resolution from width and height
+                    if (metadata.Width != null && metadata.Height != null && string.IsNullOrEmpty(video.Resolution))
+                    {
+                        video.Resolution = $"{metadata.Width}x{metadata.Height}";
+                    }
+
+                    video.FrameRate ??= metadata.FrameRate;
+                    video.VideoCodec ??= metadata.VideoCodec;
+                    if (!video.Bitrate.HasValue && metadata.VideoBitrate.HasValue)
+                    {
+                        video.Bitrate = (int?)metadata.VideoBitrate.Value;
+                    }
+                    video.AudioCodec ??= metadata.AudioCodec;
+                    video.FileSize = metadata.FileSize;
                 }
-                
-                // Set resolution from width and height
-                if (metadata.Width != null && metadata.Height != null && string.IsNullOrEmpty(video.Resolution))
-                {
-                    video.Resolution = $"{metadata.Width}x{metadata.Height}";
-                }
-                
-                video.FrameRate ??= metadata.FrameRate;
-                video.VideoCodec ??= metadata.VideoCodec;
-                video.Bitrate ??= (int?)metadata.VideoBitrate;
-                video.AudioCodec ??= metadata.AudioCodec;
-                video.FileSize = metadata.FileSize;
             }
             
             // Fetch online metadata if enabled

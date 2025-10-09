@@ -472,24 +472,9 @@ public class MetricsService
 - [ ] Implement keyboard shortcuts
 - [ ] Create onboarding flow
 - [ ] Add dark/light theme toggle
-- [ ] Implement accessibility features
-- [ ] Add PWA manifest
-
-#### Mobile Responsive Design
-- [ ] Optimize for mobile viewports
-- [ ] Implement touch gestures
-- [ ] Create mobile navigation
-- [ ] Add responsive images
-- [ ] Optimize bundle size
-- [ ] Implement offline mode
-- [ ] Add service worker
-- [ ] Create mobile-specific layouts
 
 **Deliverables:**
 - Polished UI
-- Mobile optimization
-- PWA capabilities
-- Accessibility compliance
 
 ### Week 11: Testing & Quality Assurance
 
@@ -539,13 +524,11 @@ public async Task CreateVideo_Should_Return_Video_With_Id()
 #### Deployment Preparation
 - [ ] Create production Dockerfile
 - [ ] Build GitHub Actions CI/CD pipeline
-- [ ] Create Helm chart (optional)
 - [ ] Set up automated releases
 - [ ] Create backup scripts
 - [ ] Implement update mechanism
 - [ ] Create installation script
 - [ ] Build Docker Compose examples
-- [ ] Create systemd service file
 
 #### Documentation
 - [ ] Write installation guide
@@ -553,7 +536,6 @@ public async Task CreateVideo_Should_Return_Video_With_Id()
 - [ ] Document API endpoints
 - [ ] Create troubleshooting guide
 - [ ] Write developer documentation
-- [ ] Create video tutorials
 - [ ] Build FAQ section
 - [ ] Document configuration options
 - [ ] Create deployment best practices

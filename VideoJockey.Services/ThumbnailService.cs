@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Entities;
@@ -13,6 +14,7 @@ public class ThumbnailService : IThumbnailService
     private readonly ILogger<ThumbnailService> _logger;
     private readonly IConfiguration _configuration;
     private readonly IDownloadSettingsProvider _settingsProvider;
+    private readonly IImageOptimizationService _imageOptimizationService;
     private readonly string _thumbnailDirectory;
     private readonly string _webRootPath;
 
@@ -20,12 +22,14 @@ public class ThumbnailService : IThumbnailService
         IUnitOfWork unitOfWork,
         ILogger<ThumbnailService> logger,
         IConfiguration configuration,
-        IDownloadSettingsProvider settingsProvider)
+        IDownloadSettingsProvider settingsProvider,
+        IImageOptimizationService imageOptimizationService)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _configuration = configuration;
         _settingsProvider = settingsProvider;
+        _imageOptimizationService = imageOptimizationService;
         
         _webRootPath = configuration["WebRootPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
         _thumbnailDirectory = Path.Combine(_webRootPath, "thumbnails");
@@ -38,7 +42,7 @@ public class ThumbnailService : IThumbnailService
         }
     }
 
-    public async Task<bool> GenerateThumbnailAsync(string videoPath, string outputPath, double? timePosition = null)
+    public async Task<bool> GenerateThumbnailAsync(string videoPath, string outputPath, double? timePosition = null, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(videoPath))
         {
@@ -48,6 +52,8 @@ public class ThumbnailService : IThumbnailService
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Ensure output directory exists
             var outputDir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
@@ -87,7 +93,7 @@ public class ThumbnailService : IThumbnailService
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
 
-            var completed = await Task.Run(() => process.WaitForExit(30000)); // 30 second timeout
+            var completed = await Task.Run(() => process.WaitForExit(30000), cancellationToken); // 30 second timeout
             
             if (!completed)
             {
@@ -104,6 +110,8 @@ public class ThumbnailService : IThumbnailService
                 _logger.LogError("FFmpeg failed with exit code {ExitCode}. Error: {Error}", process.ExitCode, error);
                 return false;
             }
+
+            await _imageOptimizationService.OptimizeInPlaceAsync(outputPath, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Generated thumbnail for {VideoPath} at {OutputPath}", videoPath, outputPath);
             return File.Exists(outputPath);
@@ -144,7 +152,7 @@ public class ThumbnailService : IThumbnailService
             }
 
             var thumbnailPath = GetThumbnailPath(video);
-            var success = await GenerateThumbnailAsync(video.FilePath, thumbnailPath);
+            var success = await GenerateThumbnailAsync(video.FilePath, thumbnailPath, cancellationToken: cancellationToken);
 
             if (success)
             {

@@ -144,19 +144,29 @@ namespace VideoJockey.Services
             var result = new OrganizeItemResult
             {
                 VideoId = video.Id,
-                OriginalPath = video.FilePath
+                OriginalPath = video.FilePath ?? string.Empty
             };
-            
+
             try
             {
+                if (string.IsNullOrWhiteSpace(video.FilePath))
+                {
+                    result.Success = false;
+                    result.Action = OrganizeAction.Error;
+                    result.ErrorMessage = "Video file path is missing";
+                    return result;
+                }
+
                 // Generate new path from pattern
                 var newPath = GeneratePathFromPattern(video, options.Pattern, options.CustomVariables);
-                
+
                 // Add extension if needed
                 if (options.PreserveExtension)
                 {
-                    var extension = Path.GetExtension(video.FilePath);
-                    if (!newPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                    var extension = string.IsNullOrWhiteSpace(video.FilePath)
+                        ? string.Empty
+                        : Path.GetExtension(video.FilePath);
+                    if (!string.IsNullOrEmpty(extension) && !newPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
                     {
                         newPath += extension;
                     }
@@ -169,7 +179,7 @@ namespace VideoJockey.Services
                 string fullNewPath;
                 if (options.RenameOnly)
                 {
-                    var directory = Path.GetDirectoryName(video.FilePath) ?? "";
+                    var directory = Path.GetDirectoryName(video.FilePath) ?? string.Empty;
                     fullNewPath = Path.Combine(directory, newPath);
                 }
                 else
@@ -180,12 +190,12 @@ namespace VideoJockey.Services
                 result.NewPath = fullNewPath;
                 
                 // Check if source file exists
-                if (!File.Exists(video.FilePath))
-                {
-                    result.Success = false;
-                    result.Action = OrganizeAction.Error;
-                    result.ErrorMessage = "Source file not found";
-                    return result;
+                    if (!File.Exists(video.FilePath))
+                    {
+                        result.Success = false;
+                        result.Action = OrganizeAction.Error;
+                        result.ErrorMessage = "Source file not found";
+                        return result;
                 }
                 
                 // Check if target already exists
@@ -350,21 +360,26 @@ namespace VideoJockey.Services
             
             foreach (var video in videos)
             {
+                var currentPath = video.FilePath ?? string.Empty;
                 var newPath = GeneratePathFromPattern(video, options.Pattern, options.CustomVariables);
                 if (options.PreserveExtension)
                 {
-                    var extension = Path.GetExtension(video.FilePath);
-                    if (!newPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                    var extension = string.IsNullOrWhiteSpace(currentPath)
+                        ? string.Empty
+                        : Path.GetExtension(currentPath);
+                    if (!string.IsNullOrEmpty(extension) && !newPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
                     {
                         newPath += extension;
                     }
                 }
-                
+
                 newPath = SanitizePath(newPath);
-                
+
                 if (options.RenameOnly)
                 {
-                    var dir = Path.GetDirectoryName(video.FilePath) ?? "";
+                    var dir = string.IsNullOrEmpty(currentPath)
+                        ? string.Empty
+                        : Path.GetDirectoryName(currentPath) ?? string.Empty;
                     newPath = Path.Combine(dir, newPath);
                 }
                 else if (!string.IsNullOrEmpty(baseDirectory))

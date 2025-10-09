@@ -1,3 +1,4 @@
+using System.Threading;
 using VideoJockey.Core.Entities;
 
 namespace VideoJockey.Services.Interfaces;
@@ -11,7 +12,7 @@ public interface IThumbnailService
     /// <param name="outputPath">Path where the thumbnail should be saved</param>
     /// <param name="timePosition">Time position in seconds to capture the thumbnail (default: 10% of duration)</param>
     /// <returns>True if successful, false otherwise</returns>
-    Task<bool> GenerateThumbnailAsync(string videoPath, string outputPath, double? timePosition = null);
+    Task<bool> GenerateThumbnailAsync(string videoPath, string outputPath, double? timePosition = null, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Generate thumbnails for all videos missing them

@@ -13,6 +13,7 @@ namespace VideoJockey.Services.Interfaces
         Task<SavedSearch> SaveSearchAsync(SavedSearch savedSearch);
         Task DeleteSavedSearchAsync(Guid id);
         Task<SearchFacets> GetSearchFacetsAsync();
+        void InvalidateFacetsCache();
     }
 
     public class SearchQuery

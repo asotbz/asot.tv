@@ -183,6 +183,22 @@
                                                   OnDelete="DeleteVideo"
                                                   OnContextMenuRequested="HandleContextMenu" />
                             }
+
+                            @if (_hasMoreVideos)
+                            {
+                                <div class="d-flex justify-center mt-4">
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               Disabled="@_isLoadingMore"
+                                               OnClick="LoadMoreVideosAsync">
+                                        @if (_isLoadingMore)
+                                        {
+                                            <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                                        }
+                                        Load More
+                                    </MudButton>
+                                </div>
+                            }
                         }
                     </MudPaper>
                 </MudItem>
@@ -259,6 +275,8 @@
         List
     }
 
+    private const int PageSize = 100;
+
     private readonly HashSet<Guid> _selectedVideoIds = new();
     private readonly Dictionary<Guid, Video> _videoCache = new();
     private readonly HashSet<string> _selectedGenres = new(StringComparer.OrdinalIgnoreCase);
@@ -278,8 +296,11 @@
     private ViewMode _viewMode = ViewMode.Grid;
 
     private int _totalCount;
+    private int _currentPage = 1;
+    private bool _hasMoreVideos;
 
     private bool _isLoading;
+    private bool _isLoadingMore;
 
     private bool HasSelection => _selectedVideoIds.Count > 0;
 
@@ -352,28 +373,79 @@
 
     private async Task LoadVideosAsync(bool clearSelection = false)
     {
+        if (_isLoading || _isLoadingMore)
+        {
+            return;
+        }
+
         if (clearSelection)
         {
             ClearSelection();
         }
 
-        _isLoading = true;
+        await FetchVideosPageAsync(pageNumber: 1, reset: true);
+    }
+
+    private async Task LoadMoreVideosAsync()
+    {
+        if (!_hasMoreVideos || _isLoading || _isLoadingMore)
+        {
+            return;
+        }
+
+        await FetchVideosPageAsync(_currentPage + 1, reset: false);
+    }
+
+    private async Task FetchVideosPageAsync(int pageNumber, bool reset)
+    {
+        if (reset)
+        {
+            _isLoading = true;
+        }
+        else
+        {
+            _isLoadingMore = true;
+        }
+
         StateHasChanged();
 
         try
         {
-            var query = BuildQuery();
-            var items = await VideoService.GetVideosUnpagedAsync(query);
+            var query = BuildQuery(pageNumber);
+            var page = await VideoService.GetVideosAsync(query);
 
-            _videos = items.ToList();
-            _totalCount = _videos.Count;
+            if (reset)
+            {
+                _videos = page.Items.ToList();
+                _videoCache.Clear();
+            }
+            else
+            {
+                foreach (var video in page.Items)
+                {
+                    if (_videoCache.TryGetValue(video.Id, out _))
+                    {
+                        var index = _videos.FindIndex(v => v.Id == video.Id);
+                        if (index >= 0)
+                        {
+                            _videos[index] = video;
+                        }
+                    }
+                    else
+                    {
+                        _videos.Add(video);
+                    }
+                }
+            }
 
-            _videoCache.Clear();
-
-            foreach (var video in _videos)
+            foreach (var video in page.Items)
             {
                 _videoCache[video.Id] = video;
             }
+
+            _totalCount = page.TotalCount;
+            _currentPage = page.Page;
+            _hasMoreVideos = _videos.Count < _totalCount;
         }
         catch (Exception ex)
         {
@@ -382,19 +454,20 @@
         finally
         {
             _isLoading = false;
+            _isLoadingMore = false;
             StateHasChanged();
         }
     }
 
-    private VideoQuery BuildQuery()
+    private VideoQuery BuildQuery(int pageNumber)
     {
         var (sort, direction) = GetSortSettings();
 
         var query = new VideoQuery
         {
             Search = string.IsNullOrWhiteSpace(_searchTerm) ? null : _searchTerm,
-            Page = 1,
-            PageSize = 200,
+            Page = pageNumber,
+            PageSize = PageSize,
             SortBy = sort,
             SortDirection = direction
         };

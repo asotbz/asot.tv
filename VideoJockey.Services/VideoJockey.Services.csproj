@@ -16,6 +16,7 @@
     <PackageReference Include="Refit.HttpClientFactory" Version="7.2.0" />
     <PackageReference Include="System.Threading.RateLimiting" Version="8.0.0" />
     <PackageReference Include="YoutubeDLSharp" Version="1.1.2" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
   </ItemGroup>
 
   <PropertyGroup>
