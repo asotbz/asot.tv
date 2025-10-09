@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using VideoJockey.Core.Entities;
@@ -10,68 +12,57 @@ public class FileOrganizationService : IFileOrganizationService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<FileOrganizationService> _logger;
-    private readonly string _libraryPath;
+    private readonly ILibraryPathManager _libraryPathManager;
+
     private static readonly Regex _variablePattern = new(@"\{([^}]+)\}", RegexOptions.Compiled);
 
     public FileOrganizationService(
         IUnitOfWork unitOfWork,
-        ILogger<FileOrganizationService> logger)
+        ILogger<FileOrganizationService> logger,
+        ILibraryPathManager libraryPathManager)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        
-        // Get library path from configuration
-        var config = _unitOfWork.Configurations
-            .FirstOrDefaultAsync(c => c.Key == "LibraryPath" && c.Category == "Storage")
-            .GetAwaiter().GetResult();
-            
-        _libraryPath = config?.Value ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "VideoJockey", "Library");
-            
-        EnsureDirectoryExists(_libraryPath);
+        _libraryPathManager = libraryPathManager;
     }
 
     public async Task<string> OrganizeVideoFileAsync(
-        Video video, 
-        string sourceFilePath, 
+        Video video,
+        string sourceFilePath,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceFilePath);
+
         try
         {
-            // Get naming pattern from configuration
-            var patternConfig = await _unitOfWork.Configurations
-                .FirstOrDefaultAsync(c => c.Key == "NamingPattern" && c.Category == "Organization");
-                
-            var pattern = patternConfig?.Value ?? "{artist_safe}/{year} - {title_safe}.{format}";
-            
-            // Generate the organized path
-            var organizedPath = GenerateFilePath(video, pattern);
-            var fullPath = Path.Combine(_libraryPath, organizedPath);
-            
-            // Ensure directory exists
-            EnsureDirectoryExists(Path.GetDirectoryName(fullPath)!);
-            
-            // Move the file
-            if (File.Exists(sourceFilePath))
+            var pattern = await ResolveNamingPatternAsync(cancellationToken).ConfigureAwait(false);
+            var libraryRoot = await _libraryPathManager.GetVideoRootAsync(cancellationToken).ConfigureAwait(false);
+
+            var relativePath = GenerateFilePath(video, pattern);
+            var fullPath = Path.Combine(libraryRoot, relativePath);
+
+            _libraryPathManager.EnsureDirectoryExists(Path.GetDirectoryName(fullPath)!);
+
+            if (!File.Exists(sourceFilePath))
             {
-                // Handle duplicate files
-                if (File.Exists(fullPath))
-                {
-                    fullPath = GetUniqueFilePath(fullPath);
-                }
-                
-                await Task.Run(() => File.Move(sourceFilePath, fullPath), cancellationToken);
-                _logger.LogInformation("Organized video file from {Source} to {Destination}", 
-                    sourceFilePath, fullPath);
-                    
-                // Update video entity with new path
-                video.FilePath = fullPath;
-                await _unitOfWork.Videos.UpdateAsync(video);
-                await _unitOfWork.SaveChangesAsync();
+                throw new FileNotFoundException("Source file not found", sourceFilePath);
             }
-            
-            return fullPath;
+
+            var destinationPath = ResolveDuplicate(fullPath);
+
+            await Task.Run(() => File.Move(sourceFilePath, destinationPath), cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation(
+                "Organized video file from {Source} to {Destination}",
+                sourceFilePath,
+                destinationPath);
+
+            video.FilePath = destinationPath;
+            video.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.Videos.UpdateAsync(video).ConfigureAwait(false);
+            await _unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+
+            return destinationPath;
         }
         catch (Exception ex)
         {
@@ -82,37 +73,38 @@ public class FileOrganizationService : IFileOrganizationService
 
     public string GenerateFilePath(Video video, string pattern)
     {
-        var result = pattern;
-        
-        // Replace all variables in the pattern
-        result = _variablePattern.Replace(result, match =>
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
+
+        var replaced = _variablePattern.Replace(pattern, match =>
         {
             var variable = match.Groups[1].Value;
             return GetVariableValue(video, variable);
         });
-        
-        // Clean up any double slashes or spaces
-        result = Regex.Replace(result, @"[/\\]+", Path.DirectorySeparatorChar.ToString());
-        result = result.Trim();
-        
-        return result;
+
+        replaced = Regex.Replace(replaced, @"[/\\]+", Path.DirectorySeparatorChar.ToString());
+        replaced = replaced.Trim();
+
+        return SanitizeRelativePath(replaced);
     }
 
     public bool ValidatePattern(string pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern))
+        {
             return false;
-            
-        // Check for at least one variable
+        }
+
         if (!_variablePattern.IsMatch(pattern))
+        {
             return false;
-            
-        // Check for invalid characters outside of variables
-        var withoutVariables = _variablePattern.Replace(pattern, "");
+        }
+
+        var withoutVariables = _variablePattern.Replace(pattern, string.Empty);
         var invalidPathChars = Path.GetInvalidPathChars()
             .Where(c => c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar);
-            
-        return !invalidPathChars.Any(c => withoutVariables.Contains(c));
+
+        return !invalidPathChars.Any(c => withoutVariables.Contains(c, StringComparison.Ordinal));
     }
 
     public Dictionary<string, string> GetAvailablePatternVariables()
@@ -122,61 +114,57 @@ public class FileOrganizationService : IFileOrganizationService
 
     public string PreviewOrganizedPath(Video video, string pattern)
     {
-        return Path.Combine(_libraryPath, GenerateFilePath(video, pattern));
+        var sanitizedRelative = GenerateFilePath(video, pattern);
+        var libraryRoot = _libraryPathManager.GetVideoRootAsync().GetAwaiter().GetResult();
+        return Path.Combine(libraryRoot, sanitizedRelative);
     }
 
     public async Task<ReorganizeResult> ReorganizeLibraryAsync(
-        string newPattern, 
-        IProgress<ReorganizeProgress>? progress = null, 
+        string newPattern,
+        IProgress<ReorganizeProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var result = new ReorganizeResult();
         var startTime = DateTime.UtcNow;
-        
+
+        if (!ValidatePattern(newPattern))
+        {
+            result.Errors.Add("Invalid naming pattern");
+            return result;
+        }
+
         try
         {
-            // Validate the pattern
-            if (!ValidatePattern(newPattern))
-            {
-                result.Errors.Add("Invalid naming pattern");
-                return result;
-            }
-            
-            // Get all videos
-            var videos = await _unitOfWork.Videos.GetAllAsync();
+            var videos = await _unitOfWork.Videos.GetAllAsync().ConfigureAwait(false);
+            var libraryRoot = await _libraryPathManager.GetVideoRootAsync(cancellationToken).ConfigureAwait(false);
+
             result.TotalVideos = videos.Count();
-            
             var currentIndex = 0;
+
             foreach (var video in videos)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-                    
+                cancellationToken.ThrowIfCancellationRequested();
                 currentIndex++;
-                
-                // Report progress
+
                 progress?.Report(new ReorganizeProgress
                 {
                     Current = currentIndex,
                     Total = result.TotalVideos,
                     CurrentFile = video.Title ?? "Unknown"
                 });
-                
+
                 try
                 {
-                    // Generate new path
                     var newRelativePath = GenerateFilePath(video, newPattern);
-                    var newFullPath = Path.Combine(_libraryPath, newRelativePath);
-                    
-                    // Skip if file is already at the correct location
+                    var newFullPath = Path.Combine(libraryRoot, newRelativePath);
+
                     if (string.Equals(video.FilePath, newFullPath, StringComparison.OrdinalIgnoreCase))
                     {
                         result.SuccessfulMoves++;
                         continue;
                     }
-                    
-                    // Move the file
-                    if (await MoveVideoFileAsync(video, newFullPath, cancellationToken))
+
+                    if (await MoveVideoFileAsync(video, newFullPath, cancellationToken).ConfigureAwait(false))
                     {
                         result.SuccessfulMoves++;
                     }
@@ -193,30 +181,15 @@ public class FileOrganizationService : IFileOrganizationService
                     _logger.LogError(ex, "Error reorganizing video {VideoId}", video.Id);
                 }
             }
-            
-            // Save the new pattern to configuration
-            var patternConfig = await _unitOfWork.Configurations
-                .FirstOrDefaultAsync(c => c.Key == "NamingPattern" && c.Category == "Organization");
-                
-            if (patternConfig != null)
-            {
-                patternConfig.Value = newPattern;
-                patternConfig.UpdatedAt = DateTime.UtcNow;
-                await _unitOfWork.Configurations.UpdateAsync(patternConfig);
-            }
-            else
-            {
-                await _unitOfWork.Configurations.AddAsync(new Configuration
-                {
-                    Key = "NamingPattern",
-                    Value = newPattern,
-                    Category = "Organization",
-                    Description = "File naming pattern for organized videos"
-                });
-            }
-            
-            await _unitOfWork.SaveChangesAsync();
-            
+
+            await PersistPatternAsync(newPattern).ConfigureAwait(false);
+
+            result.Duration = DateTime.UtcNow - startTime;
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            result.Errors.Add("Operation cancelled");
             result.Duration = DateTime.UtcNow - startTime;
             return result;
         }
@@ -230,46 +203,51 @@ public class FileOrganizationService : IFileOrganizationService
     }
 
     public async Task<bool> MoveVideoFileAsync(
-        Video video, 
-        string newPath, 
+        Video video,
+        string newPath,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPath);
+
         try
         {
             if (string.IsNullOrWhiteSpace(video.FilePath) || !File.Exists(video.FilePath))
             {
-                _logger.LogWarning("Source file not found for video {VideoId}: {FilePath}", 
-                    video.Id, video.FilePath);
+                _logger.LogWarning(
+                    "Source file not found for video {VideoId}: {FilePath}",
+                    video.Id,
+                    video.FilePath);
                 return false;
             }
-            
-            // Ensure destination directory exists
-            EnsureDirectoryExists(Path.GetDirectoryName(newPath)!);
-            
-            // Handle duplicate files
-            if (File.Exists(newPath))
-            {
-                newPath = GetUniqueFilePath(newPath);
-            }
-            
-            // Move the file
-            await Task.Run(() => File.Move(video.FilePath, newPath), cancellationToken);
-            
-            // Update the video entity
-            video.FilePath = newPath;
+
+            var originalPath = video.FilePath!;
+            var sanitizedFullPath = SanitizeFullPath(newPath);
+            _libraryPathManager.EnsureDirectoryExists(Path.GetDirectoryName(sanitizedFullPath)!);
+
+            var destination = ResolveDuplicate(sanitizedFullPath);
+
+            await Task.Run(() => File.Move(originalPath, destination, true), cancellationToken).ConfigureAwait(false);
+
+            video.FilePath = destination;
             video.UpdatedAt = DateTime.UtcNow;
-            await _unitOfWork.Videos.UpdateAsync(video);
-            await _unitOfWork.SaveChangesAsync();
-            
-            _logger.LogInformation("Moved video file from {OldPath} to {NewPath}", 
-                video.FilePath, newPath);
-            
+            await _unitOfWork.Videos.UpdateAsync(video).ConfigureAwait(false);
+            await _unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Moved video file from {OldPath} to {NewPath}",
+                originalPath,
+                destination);
+
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error moving video file from {OldPath} to {NewPath}", 
-                video.FilePath, newPath);
+            _logger.LogError(
+                ex,
+                "Error moving video file from {OldPath} to {NewPath}",
+                video.FilePath,
+                newPath);
             return false;
         }
     }
@@ -277,76 +255,196 @@ public class FileOrganizationService : IFileOrganizationService
     public void EnsureDirectoryExists(string filePath)
     {
         var directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        if (!string.IsNullOrWhiteSpace(directory))
         {
-            Directory.CreateDirectory(directory);
-            _logger.LogDebug("Created directory: {Directory}", directory);
+            _libraryPathManager.EnsureDirectoryExists(directory);
         }
+    }
+
+    private async Task PersistPatternAsync(string newPattern)
+    {
+        var patternConfig = await _unitOfWork.Configurations
+            .FirstOrDefaultAsync(c => c.Key == "NamingPattern" && c.Category == "Organization")
+            .ConfigureAwait(false);
+
+        if (patternConfig != null)
+        {
+            patternConfig.Value = newPattern;
+            patternConfig.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.Configurations.UpdateAsync(patternConfig).ConfigureAwait(false);
+        }
+        else
+        {
+            await _unitOfWork.Configurations.AddAsync(new Configuration
+            {
+                Key = "NamingPattern",
+                Value = newPattern,
+                Category = "Organization",
+                Description = "File naming pattern for organized videos"
+            }).ConfigureAwait(false);
+        }
+
+        await _unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    private async Task<string> ResolveNamingPatternAsync(CancellationToken cancellationToken)
+    {
+        var patternConfig = await _unitOfWork.Configurations
+            .FirstOrDefaultAsync(c => c.Key == "NamingPattern" && c.Category == "Organization")
+            .ConfigureAwait(false);
+
+        return patternConfig?.Value ?? "{artist_safe}/{year} - {title_safe}.{format}";
+    }
+
+    private string SanitizeRelativePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return _libraryPathManager.SanitizeFileName("untitled");
+        }
+
+        var segments = relativePath.Split(
+            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 0)
+        {
+            return _libraryPathManager.SanitizeFileName("untitled");
+        }
+
+        var sanitizedSegments = new List<string>(segments.Length);
+
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var segment = segments[index];
+            var isLast = index == segments.Length - 1;
+
+            if (isLast)
+            {
+                var extension = Path.GetExtension(segment);
+                var nameWithoutExtension = Path.GetFileNameWithoutExtension(segment);
+                var sanitized = _libraryPathManager.SanitizeFileName(
+                    string.IsNullOrWhiteSpace(nameWithoutExtension) ? segment : nameWithoutExtension,
+                    string.IsNullOrWhiteSpace(extension) ? null : extension.TrimStart('.'));
+                sanitizedSegments.Add(sanitized);
+            }
+            else
+            {
+                sanitizedSegments.Add(_libraryPathManager.SanitizeDirectoryName(segment));
+            }
+        }
+
+        return Path.Combine(sanitizedSegments.ToArray());
+    }
+
+    private string SanitizeFullPath(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            return fullPath;
+        }
+
+        var root = Path.GetPathRoot(fullPath) ?? string.Empty;
+        var relative = string.IsNullOrEmpty(root)
+            ? fullPath
+            : fullPath[root.Length..];
+
+        relative = relative.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var sanitizedRelative = SanitizeRelativePath(relative);
+
+        return string.IsNullOrEmpty(root)
+            ? sanitizedRelative
+            : Path.Combine(root, sanitizedRelative);
+    }
+
+    private string ResolveDuplicate(string targetPath)
+    {
+        if (!File.Exists(targetPath))
+        {
+            return targetPath;
+        }
+
+        var directory = Path.GetDirectoryName(targetPath)!;
+        var baseName = Path.GetFileNameWithoutExtension(targetPath);
+        var extension = Path.GetExtension(targetPath);
+        var counter = 1;
+
+        string candidate;
+        do
+        {
+            candidate = Path.Combine(directory, $"{baseName}_{counter}{extension}");
+            counter++;
+        } while (File.Exists(candidate));
+
+        return candidate;
     }
 
     private string GetVariableValue(Video video, string variable)
     {
         return variable.ToLowerInvariant() switch
         {
-            // Artist variables
             "artist" => video.Artist ?? "Unknown Artist",
-            "artist_safe" => FileOrganizationPatternVariables.MakeFileSystemSafe(video.Artist ?? "Unknown Artist"),
-            "artist_sort" => video.Artist ?? "Unknown Artist", // Use Artist as no separate ArtistSort field
-            
-            // Title variables
+            "artist_safe" => _libraryPathManager.SanitizeDirectoryName(video.Artist ?? "Unknown Artist"),
+            "artist_sort" => video.Artist ?? "Unknown Artist",
+
             "title" => video.Title ?? "Unknown Title",
-            "title_safe" => FileOrganizationPatternVariables.MakeFileSystemSafe(video.Title ?? "Unknown Title"),
-            
-            // Date variables
-            "year" => video.Year?.ToString("0000") ?? "0000",
-            "year2" => (video.Year % 100)?.ToString("00") ?? "00",
-            "month" => "00", // No separate month field
-            "month_name" => "Unknown", // No separate month field
-            "day" => "00", // No separate day field
+            "title_safe" => _libraryPathManager.SanitizeFileName(video.Title ?? "Unknown Title"),
+
+            "year" => video.Year?.ToString("0000", CultureInfo.InvariantCulture) ?? "0000",
+            "year2" => (video.Year % 100)?.ToString("00", CultureInfo.InvariantCulture) ?? "00",
+            "month" => "00",
+            "month_name" => "Unknown",
+            "day" => "00",
             "date" => video.Year != null ? $"{video.Year:0000}-01-01" : "0000-00-00",
-            
-            // Genre variables
+
             "genre" => video.Genres?.FirstOrDefault()?.Name ?? "Unknown",
-            "genres" => string.Join(", ", video.Genres?.Select(g => g.Name) ?? new[] { "Unknown" }),
-            
-            // Label variables  
+            "genres" => string.Join(", ", video.Genres?.Select(g => g.Name) ?? Enumerable.Empty<string>()),
+
             "label" => video.Publisher ?? "Unknown Label",
-            "label_safe" => FileOrganizationPatternVariables.MakeFileSystemSafe(video.Publisher ?? "Unknown Label"),
-            
-            // Technical variables
+            "label_safe" => _libraryPathManager.SanitizeDirectoryName(video.Publisher ?? "Unknown Label"),
+
             "resolution" => GetResolutionString(ParseHeight(video.Resolution)),
-            "width" => ParseWidth(video.Resolution)?.ToString() ?? "0",
-            "height" => ParseHeight(video.Resolution)?.ToString() ?? "0",
+            "width" => ParseWidth(video.Resolution)?.ToString(CultureInfo.InvariantCulture) ?? "0",
+            "height" => ParseHeight(video.Resolution)?.ToString(CultureInfo.InvariantCulture) ?? "0",
             "codec" => video.VideoCodec ?? "unknown",
-            "format" => Path.GetExtension(video.FilePath ?? ".mp4").TrimStart('.'),
-            "bitrate" => video.Bitrate?.ToString() ?? "0",
-            "fps" => video.FrameRate?.ToString("F2") ?? "0",
-            
-            // IMVDb variables
-            "imvdb_id" => video.ImvdbId?.ToString() ?? "",
+            "format" => ResolveFormat(video),
+            "bitrate" => video.Bitrate?.ToString(CultureInfo.InvariantCulture) ?? "0",
+            "fps" => video.FrameRate?.ToString("F2", CultureInfo.InvariantCulture) ?? "0",
+
+            "imvdb_id" => video.ImvdbId ?? string.Empty,
             "director" => video.Director ?? "Unknown",
             "production" => video.ProductionCompany ?? "Unknown",
             "featured_artists" => string.Join(", ", video.FeaturedArtists?.Select(fa => fa.Name) ?? Enumerable.Empty<string>()),
-            
-            // MusicBrainz variables
-            "mb_artist_id" => "", // Not in current Video entity
-            "mb_recording_id" => video.MusicBrainzRecordingId ?? "",
+
+            "mb_artist_id" => string.Empty,
+            "mb_recording_id" => video.MusicBrainzRecordingId ?? string.Empty,
             "album" => video.Album ?? "Unknown Album",
-            "track_number" => "", // Not in current Video entity
-            
-            // Custom variables
-            "tags" => string.Join(", ", video.Tags?.Select(t => t.Name) ?? new[] { "Unknown" }),
-            "collection" => "", // Not in current Video entity
-            "custom1" => "", // Not in current Video entity
-            "custom2" => "", // Not in current Video entity
-            "custom3" => "", // Not in current Video entity
-            
-            // Default
+            "track_number" => string.Empty,
+
+            "tags" => string.Join(", ", video.Tags?.Select(t => t.Name) ?? Enumerable.Empty<string>()),
+            "collection" => string.Empty,
+            "custom1" => string.Empty,
+            "custom2" => string.Empty,
+            "custom3" => string.Empty,
+
             _ => $"{{{variable}}}"
         };
     }
 
-    private string GetResolutionString(int? height)
+    private static string ResolveFormat(Video video)
+    {
+        if (!string.IsNullOrWhiteSpace(video.Format))
+        {
+            return video.Format;
+        }
+
+        var extension = Path.GetExtension(video.FilePath);
+        return string.IsNullOrWhiteSpace(extension)
+            ? "mp4"
+            : extension.TrimStart('.');
+    }
+
+    private static string GetResolutionString(int? height)
     {
         return height switch
         {
@@ -361,45 +459,25 @@ public class FileOrganizationService : IFileOrganizationService
         };
     }
 
-    private string GetUniqueFilePath(string filePath)
+    private static int? ParseHeight(string? resolution)
     {
-        var directory = Path.GetDirectoryName(filePath)!;
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-        var extension = Path.GetExtension(filePath);
-        
-        var counter = 1;
-        string uniquePath;
-        
-        do
+        if (string.IsNullOrEmpty(resolution))
         {
-            uniquePath = Path.Combine(directory, $"{fileNameWithoutExtension}_{counter}{extension}");
-            counter++;
-        } while (File.Exists(uniquePath));
-        
-        return uniquePath;
+            return null;
+        }
+
+        var parts = resolution.Split('x');
+        return parts.Length == 2 && int.TryParse(parts[1], out var height) ? height : null;
     }
 
-    private int? ParseHeight(string? resolution)
+    private static int? ParseWidth(string? resolution)
     {
         if (string.IsNullOrEmpty(resolution))
+        {
             return null;
-            
-        var parts = resolution.Split('x');
-        if (parts.Length == 2 && int.TryParse(parts[1], out var height))
-            return height;
-            
-        return null;
-    }
+        }
 
-    private int? ParseWidth(string? resolution)
-    {
-        if (string.IsNullOrEmpty(resolution))
-            return null;
-            
         var parts = resolution.Split('x');
-        if (parts.Length == 2 && int.TryParse(parts[0], out var width))
-            return width;
-            
-        return null;
+        return parts.Length == 2 && int.TryParse(parts[0], out var width) ? width : null;
     }
 }

@@ -132,8 +132,10 @@ try
     // Register Services
     builder.Services.AddScoped<IYtDlpService, YtDlpService>();
     builder.Services.AddScoped<VideoJockey.Services.Interfaces.IDownloadQueueService, DownloadQueueService>();
+    builder.Services.AddScoped<ILibraryPathManager, LibraryPathManager>();
     builder.Services.AddScoped<IFileOrganizationService, FileOrganizationService>();
     builder.Services.AddScoped<IMetadataService, MetadataService>();
+    builder.Services.AddScoped<IMetadataExportService, MetadataExportService>();
     builder.Services.AddScoped<VideoJockey.Services.Interfaces.ICollectionService, VideoJockey.Services.CollectionService>();
     builder.Services.AddScoped<IBulkOrganizeService, BulkOrganizeService>();
     builder.Services.AddScoped<INfoExportService, NfoExportService>();
