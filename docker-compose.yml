@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  videojockey:
+  fuzzbin:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: videojockey
+    container_name: fuzzbin
     ports:
       - "8080:8080"
     volumes:
@@ -17,7 +17,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
     restart: unless-stopped
     networks:
-      - videojockey-network
+      - fuzzbin-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -26,5 +26,5 @@ services:
       start_period: 40s
 
 networks:
-  videojockey-network:
+  fuzzbin-network:
     driver: bridge

@@ -431,7 +431,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# VideoJockey specific ignores
+# Fuzzbin specific ignores
 *.csv
 enrich_cache.json
 *.db

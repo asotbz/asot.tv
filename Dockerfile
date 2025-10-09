@@ -1,14 +1,14 @@
-# Multi-stage build for VideoJockey C# application
+# Multi-stage build for Fuzzbin C# application
 # Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy solution and project files
-COPY VideoJockey.sln ./
-COPY VideoJockey.Core/VideoJockey.Core.csproj VideoJockey.Core/
-COPY VideoJockey.Data/VideoJockey.Data.csproj VideoJockey.Data/
-COPY VideoJockey.Web/VideoJockey.Web.csproj VideoJockey.Web/
-COPY VideoJockey.Tests/VideoJockey.Tests.csproj VideoJockey.Tests/
+COPY Fuzzbin.sln ./
+COPY Fuzzbin.Core/Fuzzbin.Core.csproj Fuzzbin.Core/
+COPY Fuzzbin.Data/Fuzzbin.Data.csproj Fuzzbin.Data/
+COPY Fuzzbin.Web/Fuzzbin.Web.csproj Fuzzbin.Web/
+COPY Fuzzbin.Tests/Fuzzbin.Tests.csproj Fuzzbin.Tests/
 
 # Restore dependencies
 RUN dotnet restore
@@ -17,7 +17,7 @@ RUN dotnet restore
 COPY . .
 
 # Build the application
-WORKDIR /src/VideoJockey.Web
+WORKDIR /src/Fuzzbin.Web
 RUN dotnet build -c Release --no-restore
 
 # Publish the application
@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 VOLUME ["/app/data", "/app/logs", "/app/media"]
 
 # Run the application
-ENTRYPOINT ["dotnet", "VideoJockey.Web.dll"]
+ENTRYPOINT ["dotnet", "Fuzzbin.Web.dll"]
