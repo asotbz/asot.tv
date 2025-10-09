@@ -147,7 +147,7 @@ try
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
         options.Password.RequiredLength = 8;
-        options.User.RequireUniqueEmail = true;
+        options.User.RequireUniqueEmail = false;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
     });
@@ -295,6 +295,9 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     
+    // Enforce single-user mode
+    app.UseSingleUserEnforcement();
+    
     // Use setup check middleware to redirect to setup if not configured
     app.UseSetupCheck();
 
@@ -330,7 +333,7 @@ try
 
         logger.LogInformation("Fallback login attempt submitted for {Identifier}", identifier);
 
-        var user = await userManager.FindByNameAsync(identifier) ?? await userManager.FindByEmailAsync(identifier);
+        var user = await userManager.FindByNameAsync(identifier);
         if (user is null)
         {
             logger.LogWarning("Fallback login attempt with unknown identifier {Identifier}", identifier);

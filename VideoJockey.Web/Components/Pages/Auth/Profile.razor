@@ -34,14 +34,6 @@ else
                                           Disabled="_isSavingProfile" />
                         </MudItem>
                         <MudItem xs="12">
-                            <MudTextField @bind-Value="_profile.Email"
-                                          Label="Email address"
-                                          Variant="Variant.Outlined"
-                                          InputType="InputType.Email"
-                                          Required="true"
-                                          Disabled="_isSavingProfile" />
-                        </MudItem>
-                        <MudItem xs="12">
                             <MudButton Type="ButtonType.Submit"
                                        Variant="Variant.Filled"
                                        Color="Color.Primary"
@@ -191,7 +183,6 @@ else
         }
 
         _profile.DisplayName = _user.DisplayName ?? _user.UserName ?? string.Empty;
-        _profile.Email = _user.Email ?? string.Empty;
 
         _preferences.Theme = await GetPreferenceAsync("ui.theme") ?? "system";
         _preferences.LibraryView = await GetPreferenceAsync("library.view") ?? "grid";
@@ -210,12 +201,6 @@ else
         try
         {
             _user.DisplayName = _profile.DisplayName.Trim();
-            var updatedEmail = _profile.Email.Trim();
-            if (!string.Equals(_user.Email, updatedEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                _user.Email = updatedEmail;
-                _user.NormalizedEmail = updatedEmail.ToUpperInvariant();
-            }
 
             var result = await UserManager.UpdateAsync(_user);
             if (result.Succeeded)
@@ -350,10 +335,6 @@ else
         [Required]
         [MaxLength(100)]
         public string DisplayName { get; set; } = string.Empty;
-
-        [Required]
-        [EmailAddress]
-        public string Email { get; set; } = string.Empty;
     }
 
     private sealed class PasswordModel

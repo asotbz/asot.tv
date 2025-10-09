@@ -29,7 +29,7 @@
             }
 
             <MudTextField @bind-Value="_emailOrUsername"
-                          Label="Email or Username"
+                          Label="Username"
                           name="EmailOrUsername"
                           Variant="Variant.Outlined"
                           Required="true"
@@ -49,20 +49,13 @@
                          name="RememberMe"
                          Class="mt-3" />
 
-            <MudStack Class="mt-4" Spacing="1">
-                <MudButton ButtonType="ButtonType.Submit"
-                           Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           FullWidth="true">
-                    Sign In
-                </MudButton>
-                <MudButton Variant="Variant.Text"
-                           Color="Color.Secondary"
-                           Href="/auth/forgot-password"
-                           FullWidth="true">
-                    Forgot your password?
-                </MudButton>
-            </MudStack>
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="mt-4">
+                Sign In
+            </MudButton>
         </form>
     </MudPaper>
 </MudContainer>
@@ -203,7 +196,7 @@
         var normalized = code.Trim().ToLowerInvariant();
         (string Message, Severity Severity)? alert = normalized switch
         {
-            "missingcredentials" => ("Please enter your email or username and password.", Severity.Warning),
+            "missingcredentials" => ("Please enter your username and password.", Severity.Warning),
             "invalidcredentials" => ("Invalid credentials.", Severity.Error),
             "disabled" => ("This account has been disabled. Contact an administrator.", Severity.Error),
             "lockedout" => ("Account temporarily locked. Try again later.", Severity.Error),

@@ -160,21 +160,20 @@
                     <MudItem xs="12">
                         <MudText Typo="Typo.h6" Class="mb-2">Create administrator account</MudText>
                         <MudText Typo="Typo.body2" Class="mb-4">
-                            This account will have full access to system settings. You can add more users later.
+                            This account will have full access to system settings. VideoJockey supports a single user account.
                         </MudText>
                     </MudItem>
                     <MudItem xs="12">
-                        <MudTextField @bind-Value="_adminDisplayName"
-                                      Label="Display name"
+                        <MudTextField @bind-Value="_adminUsername"
+                                      Label="Username"
                                       Variant="Variant.Outlined"
                                       Required="true"
                                       FullWidth="true" />
                     </MudItem>
                     <MudItem xs="12">
-                        <MudTextField @bind-Value="_adminEmail"
-                                      Label="Email address"
+                        <MudTextField @bind-Value="_adminDisplayName"
+                                      Label="Display name"
                                       Variant="Variant.Outlined"
-                                      InputType="InputType.Email"
                                       Required="true"
                                       FullWidth="true" />
                     </MudItem>
@@ -247,12 +246,12 @@
                                     <td>@(_generateNfo ? "Yes" : "No")</td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Admin Display Name</strong></td>
-                                    <td>@_adminDisplayName</td>
+                                    <td><strong>Admin Username</strong></td>
+                                    <td>@_adminUsername</td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Admin Email</strong></td>
-                                    <td>@_adminEmail</td>
+                                    <td><strong>Admin Display Name</strong></td>
+                                    <td>@_adminDisplayName</td>
                                 </tr>
                             </tbody>
                         </MudSimpleTable>
@@ -306,7 +305,6 @@
     private bool _isSaving = false;
     private int _currentStep = 1;
     private const int _totalSteps = 5;
-    private static readonly EmailAddressAttribute EmailValidator = new();
     
     // Library Settings
     private string _libraryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "VideoJockey", "Library");
@@ -327,8 +325,8 @@
     private bool _enableOnlineMetadata = true;
 
     // Administrator account
+    private string _adminUsername = "admin";
     private string _adminDisplayName = "Administrator";
-    private string _adminEmail = string.Empty;
     private string _adminPassword = string.Empty;
     private string _adminPasswordConfirm = string.Empty;
 
@@ -355,8 +353,8 @@
         
         try
         {
-            if (string.IsNullOrWhiteSpace(_adminDisplayName) ||
-                string.IsNullOrWhiteSpace(_adminEmail) ||
+            if (string.IsNullOrWhiteSpace(_adminUsername) ||
+                string.IsNullOrWhiteSpace(_adminDisplayName) ||
                 string.IsNullOrWhiteSpace(_adminPassword))
             {
                 Snackbar.Add("Please complete the administrator account details.", Severity.Warning);
@@ -364,13 +362,8 @@
                 return;
             }
 
-            _adminEmail = _adminEmail.Trim();
-            if (!EmailValidator.IsValid(_adminEmail))
-            {
-                Snackbar.Add("Enter a valid administrator email address.", Severity.Warning);
-                _isSaving = false;
-                return;
-            }
+            _adminUsername = _adminUsername.Trim();
+            _adminDisplayName = _adminDisplayName.Trim();
 
             if (_passwordMismatch)
             {
@@ -426,7 +419,7 @@
             await UpsertConfigurationAsync("SetupSignInToken", "System", $"{signInToken}|{adminUser.Id}", "Temporary sign-in token for initial administrator bootstrap", isSystem: true);
             await UnitOfWork.SaveChangesAsync();
 
-            Logger.LogInformation("Generated setup sign-in token for administrator {AdminEmail}", adminUser.Email);
+            Logger.LogInformation("Generated setup sign-in token for administrator {AdminUsername}", adminUser.UserName);
             Snackbar.Add("Setup completed successfully!", Severity.Success);
             _isSaving = false;
             await InvokeAsync(() => Navigation.NavigateTo($"/auth/setup-complete?token={signInToken}", forceLoad: true));
@@ -521,6 +514,23 @@
     {
         const string adminRoleName = "Admin";
 
+        // Enforce single-user mode: prevent creating additional users
+        var existingUserCount = await UserManager.Users.CountAsync();
+        if (existingUserCount > 0)
+        {
+            var existingUser = await UserManager.Users.FirstOrDefaultAsync();
+            if (existingUser != null)
+            {
+                Logger.LogWarning("Single-user mode: User already exists. Setup attempted to create additional user.");
+                Snackbar.Add($"A user account already exists (Username: {existingUser.UserName}). VideoJockey is configured for single-user mode.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("A user account already exists. VideoJockey is configured for single-user mode.", Severity.Warning);
+            }
+            return null;
+        }
+
         if (!await RoleManager.RoleExistsAsync(adminRoleName))
         {
             var roleResult = await RoleManager.CreateAsync(new IdentityRole<Guid>(adminRoleName));
@@ -535,16 +545,16 @@
             Logger.LogInformation("Created administrator role {RoleName}", adminRoleName);
         }
 
-        var adminEmail = _adminEmail.Trim();
+        var adminUsername = _adminUsername.Trim();
         var adminDisplayName = _adminDisplayName.Trim();
 
-        var adminUser = await UserManager.FindByEmailAsync(adminEmail);
+        var adminUser = await UserManager.FindByNameAsync(adminUsername);
         if (adminUser is null)
         {
             adminUser = new ApplicationUser
             {
-                UserName = adminEmail,
-                Email = adminEmail,
+                UserName = adminUsername,
+                Email = $"{adminUsername}@localhost",
                 DisplayName = adminDisplayName,
                 EmailConfirmed = true,
                 IsActive = true,
@@ -561,7 +571,7 @@
                 }
                 return null;
             }
-            Logger.LogInformation("Created administrator account {AdminEmail}", adminEmail);
+            Logger.LogInformation("Created administrator account {AdminUsername}", adminUsername);
         }
         else
         {
@@ -591,13 +601,13 @@
                 }
                 return null;
             }
-            Logger.LogInformation("Updated administrator account {AdminEmail}", adminEmail);
+            Logger.LogInformation("Updated administrator account {AdminUsername}", adminUsername);
         }
 
         await UserManager.SetLockoutEnabledAsync(adminUser, false);
         await UserManager.SetLockoutEndDateAsync(adminUser, null);
         await UserManager.ResetAccessFailedCountAsync(adminUser);
-        Logger.LogInformation("Cleared lockout state for administrator {AdminEmail}", adminEmail);
+        Logger.LogInformation("Cleared lockout state for administrator {AdminUsername}", adminUsername);
 
         var finalUpdate = await UserManager.UpdateAsync(adminUser);
         if (!finalUpdate.Succeeded)
@@ -620,7 +630,7 @@
                 }
                 return null;
             }
-            Logger.LogInformation("Assigned administrator role {RoleName} to {AdminEmail}", adminRoleName, adminEmail);
+            Logger.LogInformation("Assigned administrator role {RoleName} to {AdminUsername}", adminRoleName, adminUsername);
         }
 
         return adminUser;
