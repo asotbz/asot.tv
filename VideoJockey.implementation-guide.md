@@ -2245,3 +2245,75 @@ This implementation provides:
 - ✅ Encrypted sensitive data
 - ✅ 80% less resource usage than Python/Node.js
 - ✅ 1-minute deployment
+
+### Week 8: Library Import & Source Verification
+
+#### Library Import Service (`VideoJockey.Services/LibraryImportService.cs`)
+
+```csharp
+public async Task<LibraryImportSession> StartImportAsync(LibraryImportRequest request, CancellationToken cancellationToken = default)
+{
+    var rootPath = request.RootPath ?? await _libraryPathManager.GetLibraryRootAsync(cancellationToken);
+    var importItems = new List<LibraryImportItem>();
+
+    foreach (var file in Directory.EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories))
+    {
+        if (!allowedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+        {
+            continue;
+        }
+
+        var item = await BuildImportItemAsync(session, file, Path.GetRelativePath(rootPath, file), request,
+            existingVideoIndex, existingVideos, sessionHashes, sessionPaths, cancellationToken);
+        importItems.Add(item);
+    }
+
+    await _itemRepository.AddRangeAsync(importItems);
+    session.Status = LibraryImportStatus.ReadyForReview;
+    session.Items = importItems;
+    await _sessionRepository.UpdateAsync(session);
+    await _unitOfWork.SaveChangesAsync();
+    return session;
+}
+```
+
+- Scans the configured library root, extracts metadata via `IMetadataService`, hashes files with SHA-256, and performs fuzzy matching (FuzzySharp `WeightedRatio`) against existing videos.
+- Persists `LibraryImportSession`/`LibraryImportItem` with duplicate classification, match candidates, and manual override slots.
+- Commit path applies metadata to new or existing videos and records created IDs for safe rollback.
+
+#### Import Wizard UI (`VideoJockey.Web/Components/Pages/Import.razor`)
+
+- Three-panel Blazor workflow: kickoff form, recent session selector, and a review grid with inline filtering/actions.
+- `MudTable` rows expose manual override select, duplicate chips, and one-click approve/reject/flag controls.
+- Buttons wire into the new service endpoints (`CommitAsync`, `RollbackAsync`, `RefreshSessionAsync`) and summary chips show review progress.
+
+#### Source Verification Service (`VideoJockey.Services/SourceVerificationService.cs`)
+
+```csharp
+public async Task<VideoSourceVerification> VerifyVideoAsync(Video video, SourceVerificationRequest request, CancellationToken cancellationToken = default)
+{
+    var sourceUrl = ResolveSourceUrl(video, request);
+    if (string.IsNullOrWhiteSpace(sourceUrl))
+    {
+        return await PersistResultAsync(video, request, null, null, VideoSourceVerificationStatus.SourceMissing, 0, cancellationToken);
+    }
+
+    var metadata = await _ytDlpService.GetVideoMetadataAsync(sourceUrl, cancellationToken);
+    var comparison = BuildComparison(video, metadata);
+    var confidence = ComputeConfidence(video, metadata, request, comparison);
+    var status = confidence >= request.ConfidenceThreshold
+        ? VideoSourceVerificationStatus.Verified
+        : VideoSourceVerificationStatus.Mismatch;
+
+    return await PersistResultAsync(video, request, comparison, sourceUrl, status, confidence, cancellationToken);
+}
+```
+
+- Wraps yt-dlp metadata retrieval, calculates duration/frame-rate/resolution deltas, and stores `VideoSourceVerification` snapshots with serialized comparison data.
+- Exposes manual override for mismatches (notes + explicit status) and surfaces verification state on the `VideoDetails` page.
+
+#### Tests (`VideoJockey.Tests/Services`)
+
+- `LibraryImportServiceTests` validates duplicate detection and metadata extraction against temp files.
+- `SourceVerificationServiceTests` verifies yt-dlp integration using a stub service and asserts manual override behaviour.
+- All new tests run under `dotnet test` without external dependencies.

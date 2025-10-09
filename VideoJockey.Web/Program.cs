@@ -145,6 +145,8 @@ try
     builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
     builder.Services.AddScoped<IPlaylistService, PlaylistService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+    builder.Services.AddScoped<ILibraryImportService, LibraryImportService>();
+    builder.Services.AddScoped<ISourceVerificationService, SourceVerificationService>();
     builder.Services.AddSingleton<IVideoUpdateNotifier, VideoJockey.Web.Services.SignalRVideoUpdateNotifier>();
     builder.Services.AddScoped<IBackupService, BackupService>();
     

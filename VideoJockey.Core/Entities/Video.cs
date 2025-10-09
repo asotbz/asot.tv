@@ -39,6 +39,11 @@ namespace VideoJockey.Core.Entities
         public string? FilePath { get; set; }
 
         /// <summary>
+        /// Hash of the file contents, used to detect duplicates
+        /// </summary>
+        public string? FileHash { get; set; }
+
+        /// <summary>
         /// File size in bytes
         /// </summary>
         public long? FileSize { get; set; }

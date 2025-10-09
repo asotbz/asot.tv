@@ -24,6 +24,9 @@ namespace VideoJockey.Data.Context
         public DbSet<SavedSearch> SavedSearches { get; set; } = null!;
         public DbSet<ActivityLog> ActivityLogs { get; set; } = null!;
         public DbSet<UserPreference> UserPreferences { get; set; } = null!;
+        public DbSet<LibraryImportSession> LibraryImportSessions { get; set; } = null!;
+        public DbSet<LibraryImportItem> LibraryImportItems { get; set; } = null!;
+        public DbSet<VideoSourceVerification> VideoSourceVerifications { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -39,6 +42,7 @@ namespace VideoJockey.Data.Context
                 entity.Property(e => e.FilePath).HasMaxLength(1000);
                 entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
                 entity.Property(e => e.NfoPath).HasMaxLength(1000);
+                entity.Property(e => e.FileHash).HasMaxLength(128);
                 entity.Property(e => e.Description).HasMaxLength(5000);
                 entity.Property(e => e.YouTubeId).HasMaxLength(50);
                 entity.Property(e => e.ImvdbId).HasMaxLength(100);
@@ -49,6 +53,7 @@ namespace VideoJockey.Data.Context
                 entity.HasIndex(e => e.YouTubeId);
                 entity.HasIndex(e => e.ImvdbId);
                 entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.FileHash);
 
                 // Configure many-to-many relationships
                 entity.HasMany(e => e.Genres)
@@ -228,6 +233,72 @@ namespace VideoJockey.Data.Context
                     .WithMany(u => u.Preferences)
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Configure LibraryImportSession entity
+            modelBuilder.Entity<LibraryImportSession>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.RootPath).IsRequired().HasMaxLength(2000);
+                entity.Property(e => e.StartedByUserId).HasMaxLength(450);
+                entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.CreatedVideoIdsJson).HasColumnType("TEXT");
+                entity.Property(e => e.Notes).HasMaxLength(2000);
+                entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+
+                entity.HasMany(e => e.Items)
+                    .WithOne(i => i.Session)
+                    .HasForeignKey(i => i.SessionId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.StartedAt);
+            });
+
+            // Configure LibraryImportItem entity
+            modelBuilder.Entity<LibraryImportItem>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.FilePath).IsRequired().HasMaxLength(2000);
+                entity.Property(e => e.RelativePath).HasMaxLength(2000);
+                entity.Property(e => e.FileName).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Extension).HasMaxLength(20);
+                entity.Property(e => e.FileHash).HasMaxLength(128);
+                entity.Property(e => e.Resolution).HasMaxLength(50);
+                entity.Property(e => e.VideoCodec).HasMaxLength(100);
+                entity.Property(e => e.AudioCodec).HasMaxLength(100);
+                entity.Property(e => e.Title).HasMaxLength(500);
+                entity.Property(e => e.Artist).HasMaxLength(500);
+                entity.Property(e => e.Album).HasMaxLength(500);
+                entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.DuplicateStatus).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.CandidateMatchesJson).HasColumnType("TEXT");
+                entity.Property(e => e.Notes).HasMaxLength(1000);
+
+                entity.HasIndex(e => e.SessionId);
+                entity.HasIndex(e => e.FileHash);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.DuplicateStatus);
+                entity.HasIndex(e => e.IsCommitted);
+            });
+
+            // Configure VideoSourceVerification entity
+            modelBuilder.Entity<VideoSourceVerification>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.SourceUrl).HasMaxLength(2000);
+                entity.Property(e => e.SourceProvider).HasMaxLength(100);
+                entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50);
+                entity.Property(e => e.ComparisonSnapshotJson).HasColumnType("TEXT");
+                entity.Property(e => e.Notes).HasMaxLength(1000);
+
+                entity.HasOne(e => e.Video)
+                    .WithMany()
+                    .HasForeignKey(e => e.VideoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.VideoId);
+                entity.HasIndex(e => e.Status);
             });
 
             // Seed initial configuration data with static dates
