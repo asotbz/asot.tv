@@ -198,7 +198,7 @@ try
     builder.Services.AddScoped<ISearchService, SearchService>();
     builder.Services.AddScoped<IExternalSearchService, ExternalSearchService>();
     builder.Services.AddSingleton<IImageOptimizationService, ImageOptimizationService>();
-    builder.Services.AddSingleton<IMetricsService, MetricsService>();
+    builder.Services.AddScoped<IMetricsService, MetricsService>();
     builder.Services.AddScoped<IThumbnailService, ThumbnailService>();
     builder.Services.AddScoped<IPlaylistService, PlaylistService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
