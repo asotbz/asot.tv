@@ -57,6 +57,11 @@ content:
     query: "type:other_video AND tag:bumpers AND tag:asot"
     order: shuffle
 
+  - search:
+    key: "MV_HALLOWEEN"
+    query: "type:music_video AND tag:halloween"
+    order: shuffle
+
 sequence:
 
   # Beyond 2000
@@ -180,9 +185,23 @@ sequence:
         filler_kind: "postroll"
       - epg_group: false
 
+    # Halloween Special
+  - key: "SQ_HALLOWEEN_SPECIAL"
+    items:
+      - epg_group: true
+      - watermark: true
+        name: "asot.tv Music Halloween"
+      - duration: "48 hours"
+        content: "MV_HALLOWEEN"
+        custom_title: "From Inside the Machine: Halloween According to AI"
+        stop_before_end: false
+      - watermark: false
+      - epg_group: false
+
 playout:
-  - sequence: "SQ_POP_MOSAIC"
-  - sequence: "SQ_SILVER_CIPHER"
-  - sequence: "SQ_NUMETAL_UNIVERSE"
-  - sequence: "SQ_ELECTRIC_LANDSCAPE"
+  - sequence: "SQ_HALLOWEEN_SPECIAL"
+#  - sequence: "SQ_POP_MOSAIC"
+#  - sequence: "SQ_SILVER_CIPHER"
+#  - sequence: "SQ_NUMETAL_UNIVERSE"
+#  - sequence: "SQ_ELECTRIC_LANDSCAPE"
   - repeat: true
