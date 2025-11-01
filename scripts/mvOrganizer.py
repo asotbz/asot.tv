@@ -257,7 +257,7 @@ class MusicVideoOrganizer:
                     sources.append(url_elem.text)
         return sources
     
-    def add_source_to_nfo(self, root: ET.Element, url: str, 
+    def add_source_to_nfo(self, root: ET.Element, url: str,
                          failed: bool = False, search: bool = False) -> None:
         """Add a source URL to NFO with metadata."""
         sources_elem = root.find('sources')
@@ -272,6 +272,17 @@ class MusicVideoOrganizer:
             url_elem.set('failed', 'true')
         if search:
             url_elem.set('search', 'true')
+    
+    def preserve_sources_section(self, old_root: ET.Element, new_root: ET.Element) -> None:
+        """Copy sources section from old NFO to new NFO."""
+        sources_elem = old_root.find('sources')
+        if sources_elem is not None:
+            # Remove any existing sources in new root
+            existing_sources = new_root.find('sources')
+            if existing_sources is not None:
+                new_root.remove(existing_sources)
+            # Append the old sources section
+            new_root.append(sources_elem)
     
     def write_nfo(self, nfo_path: Path, root: ET.Element) -> None:
         """Write NFO file with pretty printing."""
@@ -451,29 +462,46 @@ class MusicVideoOrganizer:
                 self.stats['nfo_created'] += 1
                 
             else:
-                # Check if we should redownload
-                youtube_url = row.get('youtube_url', '').strip()
-                if youtube_url and self.is_valid_youtube_url(youtube_url):
-                    existing_sources = self.get_existing_sources(existing_root)
+                # NFO exists - check if we should update it
+                if self.overwrite:
+                    # Overwrite mode: CSV is authoritative, recreate NFO from CSV
+                    print(f"  {Colors.WARNING}Overwrite mode: Updating NFO from CSV data{Colors.ENDC}")
                     
-                    if youtube_url not in existing_sources and self.overwrite:
-                        print(f"  {Colors.BLUE}Attempting redownload from new URL{Colors.ENDC}")
+                    # Create new NFO from CSV
+                    root = self.create_nfo_from_csv(row)
+                    
+                    # Preserve existing sources section
+                    self.preserve_sources_section(existing_root, root)
+                    
+                    # Check if there's a new URL to add
+                    youtube_url = row.get('youtube_url', '').strip()
+                    if youtube_url and self.is_valid_youtube_url(youtube_url):
+                        existing_sources = self.get_existing_sources(root)
                         
-                        # Try download with force overwrite since we're replacing existing video
-                        success = self.download_video(youtube_url, video_path, force_overwrite=True)
-                        self.add_source_to_nfo(existing_root, youtube_url,
-                                             failed=not success, search=False)
-                        self.write_nfo(nfo_path, existing_root)
-                        
-                        if success:
-                            self.stats['downloaded'] += 1
+                        if youtube_url not in existing_sources:
+                            print(f"  {Colors.BLUE}New URL found - attempting redownload{Colors.ENDC}")
+                            
+                            # Try download with force overwrite since we're replacing existing video
+                            success = self.download_video(youtube_url, video_path, force_overwrite=True)
+                            self.add_source_to_nfo(root, youtube_url,
+                                                 failed=not success, search=False)
+                            
+                            if success:
+                                self.stats['downloaded'] += 1
+                            else:
+                                self.stats['failed'] += 1
                         else:
-                            self.stats['failed'] += 1
+                            print(f"  {Colors.CYAN}URL already in sources{Colors.ENDC}")
+                            self.stats['skipped'] += 1
                     else:
-                        print(f"  {Colors.CYAN}Skipping: URL already in sources or overwrite disabled{Colors.ENDC}")
                         self.stats['skipped'] += 1
+                    
+                    # Write updated NFO
+                    self.write_nfo(nfo_path, root)
+                    print(f"  {Colors.GREEN}✓ NFO updated from CSV{Colors.ENDC}")
                 else:
-                    print(f"  {Colors.CYAN}Skipping: No new URL provided{Colors.ENDC}")
+                    # No overwrite: just skip
+                    print(f"  {Colors.CYAN}Skipping: Video and NFO exist, overwrite disabled{Colors.ENDC}")
                     self.stats['skipped'] += 1
         else:
             # Video doesn't exist - download it
@@ -612,7 +640,7 @@ Examples:
     parser.add_argument(
         '--overwrite',
         action='store_true',
-        help='Re-download existing videos from new URLs'
+        help='Treat CSV as authoritative: re-write NFO metadata from CSV and re-download from new URLs'
     )
     
     parser.add_argument(
